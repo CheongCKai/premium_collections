@@ -1,0 +1,29 @@
+.toy-card {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: white;
+}
+
+.toy-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.toy-price {
+  margin: 8px 0 12px;
+  font-weight: bold;
+}
+
+.toy-button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background-color: #2563eb;
+  color: white;
+}
+
+.toy-button:hover {
+  background-color: #1e40af;
+}
