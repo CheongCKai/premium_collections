@@ -67,6 +67,24 @@ db.exec(`
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY(toy_id)   REFERENCES toys(id)
   );
+
+  CREATE TABLE IF NOT EXISTS conversations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER, -- Null for guests
+    guest_email  TEXT,    -- Null for logged-in users
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    sender_role     TEXT    NOT NULL, -- 'guest', 'user', 'admin'
+    content         TEXT    NOT NULL,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+  );
 `);
 
 // ── Migration: Add description if missing ─────────────────────────

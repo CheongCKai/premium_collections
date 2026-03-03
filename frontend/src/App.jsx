@@ -182,12 +182,26 @@ function App() {
         </div>
         <div className="navbar-actions">
           <nav className="navbar-nav">
-            <button className={`nav-link${view === 'shop' ? ' active' : ''}`} onClick={() => setView('shop')}>Shop</button>
+            <div className="nav-dropdown">
+              <button 
+                className={`nav-link${view === 'shop' ? ' active' : ''}`} 
+                onClick={() => setView('shop')}
+              >
+                Shop <span className="chevron">▾</span>
+              </button>
+              <div className="dropdown-content">
+                <button className="dropdown-item" onClick={() => setView('shop')}>Products</button>
+                <button className="dropdown-item" onClick={() => setView('contact')}>Contact Us</button>
+              </div>
+            </div>
             {currentUser && (
               <button className={`nav-link${view === 'history' ? ' active' : ''}`} onClick={() => setView('history')}>History</button>
             )}
             {currentUser && currentUser.role === 'admin' && (
               <button className={`nav-link${view === 'admin' ? ' active' : ''}`} onClick={() => setView('admin')}>Admin</button>
+            )}
+            {currentUser && currentUser.role === 'admin' && (
+              <button className={`nav-link${view === 'inbox' ? ' active' : ''}`} onClick={() => setView('inbox')}>Inbox</button>
             )}
           </nav>
 
@@ -293,6 +307,14 @@ function App() {
 
         {view === 'history' && currentUser && (
           <PurchaseHistory />
+        )}
+
+        {view === 'contact' && (
+          <ContactUs currentUser={currentUser} />
+        )}
+
+        {view === 'inbox' && currentUser?.role === 'admin' && (
+          <AdminInbox />
         )}
       </main>
 
@@ -563,6 +585,160 @@ function PurchaseHistory() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ContactUs({ currentUser }) {
+  const [messages, setMessages] = useState([]);
+  const [email, setEmail] = useState('');
+  const [content, setContent] = useState('');
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    if (currentUser) {
+      const token = localStorage.getItem('token');
+      fetch('/api/conversations', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => setMessages(data.messages || []));
+    }
+  }, [currentUser]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    fetch('/api/contact', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify({ email: currentUser ? null : email, content })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      setStatus('Message sent successfully!');
+      setContent('');
+      if (currentUser) {
+        setMessages(prev => [...prev, { content, sender_role: 'user', created_at: new Date().toISOString() }]);
+      }
+    })
+    .catch(err => setStatus('Error: ' + err.message));
+  };
+
+  return (
+    <div className="contact-page">
+      <h2 className="section-title">Contact Us</h2>
+      <div className="contact-container">
+        {currentUser && messages.length > 0 && (
+          <div className="chat-window">
+            {messages.map((m, i) => (
+              <div key={i} className={`chat-bubble ${m.sender_role}`}>
+                <div className="bubble-content">{m.content}</div>
+                <div className="bubble-time">{new Date(m.created_at).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form className="contact-form" onSubmit={handleSubmit}>
+          {!currentUser && (
+            <div className="form-group">
+              <label>Your Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
+          )}
+          <div className="form-group">
+            <label>{currentUser ? 'Your Message' : 'Message'}</label>
+            <textarea value={content} onChange={e => setContent(e.target.value)} rows="5" required />
+          </div>
+          <button type="submit" className="save-btn">Send Message</button>
+          {status && <p className="status-msg">{status}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AdminInbox() {
+  const [conversations, setConversations] = useState([]);
+  const [selectedConv, setSelectedConv] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/admin/conversations', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(setConversations);
+  }, []);
+
+  const handleSelect = (conv) => {
+    setSelectedConv(conv);
+    const token = localStorage.getItem('token');
+    fetch(`/api/admin/conversations/${conv.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(setMessages);
+  };
+
+  const handleReply = (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    fetch(`/api/admin/conversations/${selectedConv.id}/reply`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content: reply })
+    })
+    .then(() => {
+      setMessages(prev => [...prev, { content: reply, sender_role: 'admin', created_at: new Date().toISOString() }]);
+      setReply('');
+    });
+  };
+
+  return (
+    <div className="inbox-page">
+      <h2 className="section-title">Admin Inbox</h2>
+      <div className="inbox-container">
+        <div className="conv-list">
+          {conversations.map(c => (
+            <div key={c.id} className={`conv-item ${selectedConv?.id === c.id ? 'active' : ''}`} onClick={() => handleSelect(c)}>
+              <div className="conv-user">{c.user_name || c.guest_email || 'Guest'}</div>
+              <div className="conv-last">{c.last_message || 'No messages'}</div>
+              <div className="conv-time">{new Date(c.updated_at).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+        <div className="chat-area">
+          {selectedConv ? (
+            <>
+              <div className="chat-window">
+                {messages.map((m, i) => (
+                  <div key={i} className={`chat-bubble ${m.sender_role}`}>
+                    <div className="bubble-content">{m.content}</div>
+                    <div className="bubble-time">{new Date(m.created_at).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+              <form className="reply-form" onSubmit={handleReply}>
+                <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Type a reply..." required />
+                <button type="submit">Send</button>
+              </form>
+            </>
+          ) : (
+            <div className="empty-chat">Select a conversation to view.</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

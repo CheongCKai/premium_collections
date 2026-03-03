@@ -211,6 +211,90 @@ app.get("/api/orders", requireAuth, (req, res) => {
   res.json(detailed);
 });
 
+// ── MESSAGING ROUTES ───────────────────────────────────────────────
+
+// Public/User: Send a message or start a conversation
+app.post("/api/contact", (req, res) => {
+  const { email, content } = req.body;
+  const userId = req.headers.authorization ? null : null; // Placeholder for optional auth
+  
+  // Use Middleware logic manually if not using requireAuth for optional auth
+  let finalUserId = null;
+  let guestEmail = email;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
+      finalUserId = decoded.id;
+      guestEmail = null;
+    } catch (e) { /* Ignore invalid token for guest mode */ }
+  }
+
+  if (!content) return res.status(400).json({ error: "Content is required" });
+  if (!finalUserId && !guestEmail) return res.status(400).json({ error: "Email is required for guests" });
+
+  let conv;
+  if (finalUserId) {
+    conv = db.prepare("SELECT id FROM conversations WHERE user_id = ?").get(finalUserId);
+  } else {
+    conv = db.prepare("SELECT id FROM conversations WHERE guest_email = ? AND user_id IS NULL").get(guestEmail);
+  }
+
+  if (!conv) {
+    const info = db.prepare("INSERT INTO conversations (user_id, guest_email) VALUES (?, ?)").run(finalUserId, guestEmail);
+    conv = { id: info.lastInsertRowid };
+  }
+
+  db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
+    .run(conv.id, finalUserId ? 'user' : 'guest', content);
+  
+  db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conv.id);
+
+  res.status(201).json({ message: "Message sent", conversationId: conv.id });
+});
+
+// User: Get own conversation history
+app.get("/api/conversations", requireAuth, (req, res) => {
+  const conv = db.prepare("SELECT * FROM conversations WHERE user_id = ?").get(req.user.id);
+  if (!conv) return res.json({ messages: [] });
+  
+  const messages = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(conv.id);
+  res.json({ conversation: conv, messages });
+});
+
+// Admin: List all conversations
+app.get("/api/admin/conversations", requireAdmin, (req, res) => {
+  const convs = db.prepare(`
+    SELECT c.*, u.name as user_name, u.email as user_email,
+    (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
+    FROM conversations c
+    LEFT JOIN users u ON u.id = c.user_id
+    ORDER BY updated_at DESC
+  `).all();
+  res.json(convs);
+});
+
+// Admin: Get specific conversation history
+app.get("/api/admin/conversations/:id", requireAdmin, (req, res) => {
+  const messages = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(req.params.id);
+  res.json(messages);
+});
+
+// Admin: Reply to a conversation
+app.post("/api/admin/conversations/:id/reply", requireAdmin, (req, res) => {
+  const { content } = req.body;
+  if (!content) return res.status(400).json({ error: "Content is required" });
+
+  db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, 'admin', ?)")
+    .run(req.params.id, content);
+  
+  db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(req.params.id);
+
+  res.status(201).json({ message: "Reply sent" });
+});
+
 // ── ADMIN ROUTES (admin only) ───────────────────────────────────────
 app.patch("/api/toys/:id/stock", requireAdmin, (req, res) => {
   const { stock_status } = req.body;
