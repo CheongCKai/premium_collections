@@ -91,13 +91,13 @@ app.get("/api/toys", (req, res) => {
 
 // POST /api/toys  (admin only)
 app.post("/api/toys", requireAdmin, (req, res) => {
-  const { name, price, category, emoji, badge, rating, reviews } = req.body;
+  const { name, price, category, emoji, badge, rating, reviews, description } = req.body;
   if (!name || !price || !category || !emoji)
     return res.status(400).json({ error: "name, price, category, and emoji are required." });
 
   const result = db
-    .prepare("INSERT INTO toys (name, price, category, emoji, badge, rating, reviews) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(name, price, category, emoji, badge || null, rating || 0, reviews || 0);
+    .prepare("INSERT INTO toys (name, price, category, emoji, badge, rating, reviews, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(name, price, category, emoji, badge || null, rating || 0, reviews || 0, description || null);
 
   const toy = db.prepare("SELECT * FROM toys WHERE id = ?").get(result.lastInsertRowid);
   res.status(201).json(toy);
@@ -105,12 +105,12 @@ app.post("/api/toys", requireAdmin, (req, res) => {
 
 // PUT /api/toys/:id  (admin only)
 app.put("/api/toys/:id", requireAdmin, (req, res) => {
-  const { name, price, category, emoji, badge, rating, reviews } = req.body;
+  const { name, price, category, emoji, badge, rating, reviews, description, stock_status } = req.body;
   const toy = db.prepare("SELECT * FROM toys WHERE id = ?").get(req.params.id);
   if (!toy) return res.status(404).json({ error: "Toy not found." });
 
   db.prepare(
-    "UPDATE toys SET name=?, price=?, category=?, emoji=?, badge=?, rating=?, reviews=? WHERE id=?"
+    "UPDATE toys SET name=?, price=?, category=?, emoji=?, badge=?, rating=?, reviews=?, description=?, stock_status=? WHERE id=?"
   ).run(
     name   ?? toy.name,
     price  ?? toy.price,
@@ -119,13 +119,106 @@ app.put("/api/toys/:id", requireAdmin, (req, res) => {
     badge  !== undefined ? badge : toy.badge,
     rating ?? toy.rating,
     reviews ?? toy.reviews,
+    description ?? toy.description,
+    stock_status ?? toy.stock_status,
     req.params.id
   );
 
   res.json(db.prepare("SELECT * FROM toys WHERE id = ?").get(req.params.id));
 });
 
-// DELETE /api/toys/:id  (admin only)
+// ── CART ROUTES (requires authentication) ───────────────────────────
+app.get("/api/cart", requireAuth, (req, res) => {
+  let cart = db.prepare("SELECT id FROM carts WHERE user_id = ?").get(req.user.id);
+  if (!cart) {
+    const info = db.prepare("INSERT INTO carts (user_id) VALUES (?)").run(req.user.id);
+    cart = { id: info.lastInsertRowid };
+  }
+  const items = db.prepare(`
+    SELECT ci.id as cartItemId, ci.qty, t.* FROM cart_items ci
+    JOIN toys t ON t.id = ci.toy_id
+    WHERE ci.cart_id = ?
+  `).all(cart.id);
+  res.json({ cartId: cart.id, items });
+});
+
+app.post("/api/cart/items", requireAuth, (req, res) => {
+  const { toyId, qty = 1 } = req.body;
+  if (!toyId) return res.status(400).json({ error: "toyId required" });
+  let cart = db.prepare("SELECT id FROM carts WHERE user_id = ?").get(req.user.id);
+  if (!cart) {
+    const info = db.prepare("INSERT INTO carts (user_id) VALUES (?)").run(req.user.id);
+    cart = { id: info.lastInsertRowid };
+  }
+  const existing = db.prepare("SELECT id, qty FROM cart_items WHERE cart_id = ? AND toy_id = ?").get(cart.id, toyId);
+  if (existing) {
+    db.prepare("UPDATE cart_items SET qty = ? WHERE id = ?").run(existing.qty + qty, existing.id);
+  } else {
+    db.prepare("INSERT INTO cart_items (cart_id, toy_id, qty) VALUES (?, ?, ?)").run(cart.id, toyId, qty);
+  }
+  res.status(201).json({ message: "Item added to cart" });
+});
+
+app.put("/api/cart/items/:itemId", requireAuth, (req, res) => {
+  const { qty } = req.body;
+  if (qty == null) return res.status(400).json({ error: "qty required" });
+  db.prepare("UPDATE cart_items SET qty = ? WHERE id = ?").run(qty, req.params.itemId);
+  res.json({ message: "Cart item updated" });
+});
+
+app.delete("/api/cart/items/:itemId", requireAuth, (req, res) => {
+  db.prepare("DELETE FROM cart_items WHERE id = ?").run(req.params.itemId);
+  res.json({ message: "Cart item removed" });
+});
+
+app.delete("/api/cart", requireAuth, (req, res) => {
+  const cart = db.prepare("SELECT id FROM carts WHERE user_id = ?").get(req.user.id);
+  if (cart) {
+    db.prepare("DELETE FROM cart_items WHERE cart_id = ?").run(cart.id);
+  }
+  res.json({ message: "Cart cleared" });
+});
+
+// ── ORDER ROUTES (requires authentication) ──────────────────────────
+app.post("/api/orders", requireAuth, (req, res) => {
+  const cart = db.prepare("SELECT id FROM carts WHERE user_id = ?").get(req.user.id);
+  if (!cart) return res.status(400).json({ error: "No cart found" });
+  const items = db.prepare("SELECT * FROM cart_items WHERE cart_id = ?").all(cart.id);
+  if (items.length === 0) return res.status(400).json({ error: "Cart is empty" });
+  
+  const total = items.reduce((sum, ci) => {
+    const toy = db.prepare("SELECT price FROM toys WHERE id = ?").get(ci.toy_id);
+    return sum + (toy.price * ci.qty);
+  }, 0);
+
+  const orderInfo = db.prepare("INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, 'completed')").run(req.user.id, total);
+  const orderId = orderInfo.lastInsertRowid;
+  const insertItem = db.prepare("INSERT INTO order_items (order_id, toy_id, qty, price_at_purchase) VALUES (?, ?, ?, ?)");
+  items.forEach(ci => {
+    const toy = db.prepare("SELECT price FROM toys WHERE id = ?").get(ci.toy_id);
+    insertItem.run(orderId, ci.toy_id, ci.qty, toy.price);
+  });
+  db.prepare("DELETE FROM cart_items WHERE cart_id = ?").run(cart.id);
+  res.status(201).json({ orderId, total });
+});
+
+app.get("/api/orders", requireAuth, (req, res) => {
+  const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.user.id);
+  const detailed = orders.map(o => {
+    const its = db.prepare("SELECT oi.*, t.name, t.price FROM order_items oi JOIN toys t ON t.id = oi.toy_id WHERE oi.order_id = ?").all(o.id);
+    return { ...o, items: its };
+  });
+  res.json(detailed);
+});
+
+// ── ADMIN ROUTES (admin only) ───────────────────────────────────────
+app.patch("/api/toys/:id/stock", requireAdmin, (req, res) => {
+  const { stock_status } = req.body;
+  if (!stock_status) return res.status(400).json({ error: "stock_status required" });
+  db.prepare("UPDATE toys SET stock_status = ? WHERE id = ?").run(stock_status, req.params.id);
+  res.json(db.prepare("SELECT * FROM toys WHERE id = ?").get(req.params.id));
+});
+
 app.delete("/api/toys/:id", requireAdmin, (req, res) => {
   const toy = db.prepare("SELECT * FROM toys WHERE id = ?").get(req.params.id);
   if (!toy) return res.status(404).json({ error: "Toy not found." });
@@ -133,15 +226,8 @@ app.delete("/api/toys/:id", requireAdmin, (req, res) => {
   res.json({ message: "Toy deleted successfully." });
 });
 
-// ══════════════════════════════════════════════════════════════════════
-// ADMIN ROUTES
-// ══════════════════════════════════════════════════════════════════════
-
-// GET /api/admin/users  (admin only)
 app.get("/api/admin/users", requireAdmin, (req, res) => {
-  const users = db
-    .prepare("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC")
-    .all();
+  const users = db.prepare("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC").all();
   res.json(users);
 });
 

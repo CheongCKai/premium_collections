@@ -16,10 +16,20 @@ function StarRating({ rating }) {
 }
 
 export default function ToyCard({ toy, onAddToCart }) {
+  const isSoldOut = toy.stock_status === 'sold_out';
+  const isLowStock = toy.stock_status === 'low';
+
   return (
-    <div className="toy-card">
+    <div className={`toy-card${isSoldOut ? ' is-sold-out' : ''}`}>
       {toy.badge && (
         <span className={`toy-badge badge-${toy.badge.toLowerCase()}`}>{toy.badge}</span>
+      )}
+
+      {isSoldOut && (
+        <span className="toy-badge badge-sold_out">Sold Out</span>
+      )}
+      {!isSoldOut && isLowStock && (
+        <span className="toy-badge badge-low">Low Stock</span>
       )}
 
       <div className="toy-emoji-wrap">
@@ -29,6 +39,7 @@ export default function ToyCard({ toy, onAddToCart }) {
       <div className="toy-info">
         <p className="toy-category">{toy.category}</p>
         <h3 className="toy-name">{toy.name}</h3>
+        {toy.description && <p className="toy-description">{toy.description}</p>}
 
         <StarRating rating={toy.rating} />
         <p className="toy-reviews">{toy.reviews} reviews</p>
@@ -39,8 +50,9 @@ export default function ToyCard({ toy, onAddToCart }) {
             className="toy-btn"
             onClick={() => onAddToCart(toy)}
             id={`add-to-cart-${toy.id}`}
+            disabled={isSoldOut}
           >
-            Add to Cart
+            {isSoldOut ? 'Sold Out' : 'Add to Cart'}
           </button>
         </div>
       </div>

@@ -20,25 +20,70 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS toys (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    name     TEXT    NOT NULL,
-    price    REAL    NOT NULL,
-    category TEXT    NOT NULL,
-    emoji    TEXT    NOT NULL,
-    badge    TEXT,
-    rating   REAL    NOT NULL DEFAULT 0,
-    reviews  INTEGER NOT NULL DEFAULT 0
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    price        REAL    NOT NULL,
+    category     TEXT    NOT NULL,
+    emoji        TEXT    NOT NULL,
+    badge        TEXT,
+    rating       REAL    NOT NULL DEFAULT 0,
+    reviews      INTEGER NOT NULL DEFAULT 0,
+    stock_status TEXT    NOT NULL DEFAULT 'available',
+    description  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS carts (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS cart_items (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    cart_id INTEGER NOT NULL,
+    toy_id  INTEGER NOT NULL,
+    qty     INTEGER NOT NULL,
+    FOREIGN KEY(cart_id) REFERENCES carts(id) ON DELETE CASCADE,
+    FOREIGN KEY(toy_id)  REFERENCES toys(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    total_amount REAL    NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'pending', -- e.g., pending, completed, cancelled
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS order_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id   INTEGER NOT NULL,
+    toy_id     INTEGER NOT NULL,
+    qty        INTEGER NOT NULL,
+    price_at_purchase REAL NOT NULL, -- Price of the toy at the time of order
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(toy_id)   REFERENCES toys(id)
   );
 `);
 
+// ── Migration: Add description if missing ─────────────────────────
+try {
+  db.prepare("ALTER TABLE toys ADD COLUMN description TEXT").run();
+} catch (e) {
+  // Column already exists or table doesn't exist yet
+}
+
 // ── Seed Admin Account ─────────────────────────────────────────────
 const seedAdmin = () => {
-  const exists = db.prepare("SELECT id FROM users WHERE email = ?").get("admin@premium.com");
+  const exists = db.prepare("SELECT id FROM users WHERE email = ?").get("admin");
   if (!exists) {
     const hash = bcrypt.hashSync("admin123", 10);
     db.prepare(
       "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)"
-    ).run("Admin", "admin@premium.com", hash, "admin");
+    ).run("Admin", "admin", hash, "admin");
     console.log("✅ Admin account seeded: admin@premium.com / admin123");
   }
 };

@@ -33,6 +33,13 @@
   z-index: 1;
 }
 
+/* Stock status colors */
+.badge-hot      { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.badge-new      { background: linear-gradient(135deg, #10b981, #059669); }
+.badge-sale     { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+.badge-low      { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.badge-sold_out { background: linear-gradient(135deg, #6b7280, #4b5563); }
+
 /* Emoji area */
 .toy-emoji-wrap {
   display: flex;
@@ -82,6 +89,17 @@
   color: var(--text-primary);
   line-height: 1.3;
   margin-bottom: 0.15rem;
+}
+
+.toy-description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 0.6rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Stars */
@@ -151,6 +169,13 @@
 
 .toy-btn:active {
   transform: scale(0.97);
+}
+
+.toy-btn:disabled {
+  background: #d1d5db;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Cart bump animation */
