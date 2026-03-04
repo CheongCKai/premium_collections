@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import './App.css';
 import ToyCard from './component/toyCard';
 import CartSidebar from './component/CartSidebar';
@@ -21,6 +21,23 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [cartBump, setCartBump] = useState(false);
   const [view, setView] = useState('shop'); // 'shop' | 'admin' | 'history'
+  const [isShopDropdownOpen, setIsShopDropdownOpen] = useState(false);
+  const dropdownTimeoutRef = useRef(null);
+
+  const handleDropdownEnter = () => {
+    if (dropdownTimeoutRef.current) {
+      clearTimeout(dropdownTimeoutRef.current);
+      dropdownTimeoutRef.current = null;
+    }
+    setIsShopDropdownOpen(true);
+  };
+
+  const handleDropdownLeave = () => {
+    dropdownTimeoutRef.current = setTimeout(() => {
+      setIsShopDropdownOpen(false);
+    }, 5000);
+  };
+
 
   useEffect(() => {
     fetch('/api/toys')
@@ -182,16 +199,20 @@ function App() {
         </div>
         <div className="navbar-actions">
           <nav className="navbar-nav">
-            <div className="nav-dropdown">
+            <div 
+              className={`nav-dropdown${isShopDropdownOpen ? ' open' : ''}`}
+              onMouseEnter={handleDropdownEnter}
+              onMouseLeave={handleDropdownLeave}
+            >
               <button 
-                className={`nav-link${view === 'shop' ? ' active' : ''}`} 
+                className={`nav-link${view === 'shop' || view === 'contact' ? ' active' : ''}`} 
                 onClick={() => setView('shop')}
               >
                 Shop <span className="chevron">▾</span>
               </button>
               <div className="dropdown-content">
-                <button className="dropdown-item" onClick={() => setView('shop')}>Products</button>
-                <button className="dropdown-item" onClick={() => setView('contact')}>Contact Us</button>
+                <button className="dropdown-item" onClick={() => { setView('shop'); setIsShopDropdownOpen(false); }}>Products</button>
+                <button className="dropdown-item" onClick={() => { setView('contact'); setIsShopDropdownOpen(false); }}>Contact Us</button>
               </div>
             </div>
             {currentUser && (
@@ -731,7 +752,7 @@ function AdminInbox() {
               </div>
               <form className="reply-form" onSubmit={handleReply}>
                 <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Type a reply..." required />
-                <button type="submit">Send</button>
+                <button type="submit" style="margin-top: 10px;">Send</button>
               </form>
             </>
           ) : (
