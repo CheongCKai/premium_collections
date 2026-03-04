@@ -12,7 +12,7 @@ db.pragma("foreign_keys = ON");
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT    NOT NULL,
+    username     TEXT    NOT NULL UNIQUE,
     email        TEXT    NOT NULL UNIQUE,
     password_hash TEXT   NOT NULL,
     role         TEXT    NOT NULL DEFAULT 'user',
@@ -100,8 +100,8 @@ const seedAdmin = () => {
   if (!exists) {
     const hash = bcrypt.hashSync("admin123", 10);
     db.prepare(
-      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)"
-    ).run("Admin", "admin", hash, "admin");
+      "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)"
+    ).run("admin", "admin@premium.com", hash, "admin");
     console.log("✅ Admin account seeded: admin@premium.com / admin123");
   }
 };

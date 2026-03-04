@@ -3,14 +3,17 @@ import './LoginPage.css';
 
 export default function LoginPage({ onLoginSuccess, onClose }) {
   const [tab, setTab] = useState('login'); // 'login' | 'register'
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ username: '', email: '', password: '', identifier: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const update = (field) => (e) => {
     setForm((f) => ({ ...f, [field]: e.target.value }));
     setError('');
   };
+
+  const togglePassword = () => setShowPassword(!showPassword);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,8 +22,8 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
 
     const endpoint = tab === 'login' ? '/api/auth/login' : '/api/auth/register';
     const body = tab === 'login'
-      ? { email: form.email, password: form.password }
-      : { name: form.name, email: form.email, password: form.password };
+      ? { identifier: form.identifier, password: form.password }
+      : { username: form.username, email: form.email, password: form.password };
 
     try {
       const res = await fetch(endpoint, {
@@ -90,43 +93,55 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
           <form className="auth-form" onSubmit={handleSubmit} noValidate>
             {tab === 'register' && (
               <div className="form-group">
-                <label htmlFor="auth-name">Full Name</label>
+                <label htmlFor="auth-username">Username</label>
                 <input
-                  id="auth-name"
+                  id="auth-username"
                   type="text"
-                  placeholder="Jane Smith"
-                  value={form.name}
-                  onChange={update('name')}
+                  placeholder="janesmith123"
+                  value={form.username}
+                  onChange={update('username')}
                   required
-                  autoComplete="name"
+                  autoComplete="username"
                 />
               </div>
             )}
 
             <div className="form-group">
-              <label htmlFor="auth-email">Email Address</label>
+              <label htmlFor="auth-identifier">
+                {tab === 'login' ? 'Username or Email Address' : 'Email Address'}
+              </label>
               <input
-                id="auth-email"
-                type="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={update('email')}
+                id="auth-identifier"
+                type={tab === 'login' ? 'text' : 'email'}
+                placeholder={tab === 'login' ? 'Username or email' : 'you@example.com'}
+                value={tab === 'login' ? form.identifier : form.email}
+                onChange={update(tab === 'login' ? 'identifier' : 'email')}
                 required
-                autoComplete="email"
+                autoComplete={tab === 'login' ? 'username' : 'email'}
               />
             </div>
 
-            <div className="form-group">
+            <div className="form-group password-group">
               <label htmlFor="auth-password">Password</label>
-              <input
-                id="auth-password"
-                type="password"
-                placeholder={tab === 'register' ? 'Minimum 6 characters' : '••••••••'}
-                value={form.password}
-                onChange={update('password')}
-                required
-                autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-              />
+              <div className="password-input-wrapper">
+                <input
+                  id="auth-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={tab === 'register' ? 'Minimum 6 characters' : '••••••••'}
+                  value={form.password}
+                  onChange={update('password')}
+                  required
+                  autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button 
+                  type="button" 
+                  className="password-toggle-btn"
+                  onClick={togglePassword}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? '👁️‍🗨️' : '👁️'}
+                </button>
+              </div>
             </div>
 
             {error && <div className="auth-error">⚠️ {error}</div>}

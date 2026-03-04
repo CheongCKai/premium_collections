@@ -30,25 +30,29 @@ app.get("/api/health", (req, res) => {
 
 // POST /api/auth/register
 app.post("/api/auth/register", (req, res) => {
-  const { name, email, password } = req.body;
+  const { username, email, password } = req.body;
 
-  if (!name || !email || !password)
-    return res.status(400).json({ error: "Name, email and password are required." });
+  if (!username || !email || !password)
+    return res.status(400).json({ error: "Username, email and password are required." });
 
   if (password.length < 6)
     return res.status(400).json({ error: "Password must be at least 6 characters." });
 
-  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-  if (existing)
+  const existingEmail = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+  if (existingEmail)
     return res.status(409).json({ error: "An account with this email already exists." });
+
+  const existingUser = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  if (existingUser)
+    return res.status(409).json({ error: "This username is already taken." });
 
   const password_hash = bcrypt.hashSync(password, 10);
   const result = db
-    .prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'user')")
-    .run(name, email, password_hash);
+    .prepare("INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, 'user')")
+    .run(username, email, password_hash);
 
   const user = db
-    .prepare("SELECT id, name, email, role, created_at FROM users WHERE id = ?")
+    .prepare("SELECT id, username, email, role, created_at FROM users WHERE id = ?")
     .get(result.lastInsertRowid);
 
   const token = signToken(user);
@@ -57,17 +61,17 @@ app.post("/api/auth/register", (req, res) => {
 
 // POST /api/auth/login
 app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, password } = req.body; // 'identifier' can be email or username
 
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required." });
+  if (!identifier || !password)
+    return res.status(400).json({ error: "Username/Email and password are required." });
 
   const user = db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email);
+    .prepare("SELECT * FROM users WHERE email = ? OR username = ?")
+    .get(identifier, identifier);
 
   if (!user || !bcrypt.compareSync(password, user.password_hash))
-    return res.status(401).json({ error: "Invalid email or password." });
+    return res.status(401).json({ error: "Invalid username/email or password." });
 
   const token = signToken(user);
   const { password_hash, ...safeUser } = user; // never send hash to client
@@ -267,7 +271,7 @@ app.get("/api/conversations", requireAuth, (req, res) => {
 // Admin: List all conversations
 app.get("/api/admin/conversations", requireAdmin, (req, res) => {
   const convs = db.prepare(`
-    SELECT c.*, u.name as user_name, u.email as user_email,
+    SELECT c.*, u.username as user_name, u.email as user_email,
     (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
     FROM conversations c
     LEFT JOIN users u ON u.id = c.user_id
@@ -311,7 +315,7 @@ app.delete("/api/toys/:id", requireAdmin, (req, res) => {
 });
 
 app.get("/api/admin/users", requireAdmin, (req, res) => {
-  const users = db.prepare("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC").all();
+  const users = db.prepare("SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC").all();
   res.json(users);
 });
 

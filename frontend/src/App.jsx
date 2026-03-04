@@ -35,7 +35,7 @@ function App() {
   const handleDropdownLeave = () => {
     dropdownTimeoutRef.current = setTimeout(() => {
       setIsShopDropdownOpen(false);
-    }, 5000);
+    }, 3000);
   };
 
 
@@ -652,33 +652,75 @@ function ContactUs({ currentUser }) {
 
   return (
     <div className="contact-page">
-      <h2 className="section-title">Contact Us</h2>
-      <div className="contact-container">
-        {currentUser && messages.length > 0 && (
-          <div className="chat-window">
-            {messages.map((m, i) => (
-              <div key={i} className={`chat-bubble ${m.sender_role}`}>
-                <div className="bubble-content">{m.content}</div>
-                <div className="bubble-time">{new Date(m.created_at).toLocaleString()}</div>
-              </div>
-            ))}
+      <div className="contact-hero">
+        <h1 className="hero-title">HAVE SOME <span className="gradient-text">QUESTIONS?</span></h1>
+      </div>
+      
+      <div className="contact-grid-container">
+        <div className="contact-illustration-side">
+          <div className="contact-icon-wrapper">
+            <span className="contact-large-icon">✉️</span>
           </div>
-        )}
+        </div>
 
-        <form className="contact-form" onSubmit={handleSubmit}>
-          {!currentUser && (
-            <div className="form-group">
-              <label>Your Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+        <div className="contact-form-side">
+          {currentUser && messages.length > 0 && (
+            <div className="chat-window">
+              {messages.map((m, i) => (
+                <div key={i} className={`chat-bubble-wrapper ${m.sender_role}`}>
+                  <div className="bubble-header">
+                    <span className="bubble-name">{m.sender_role === 'admin' ? 'Support Agent' : (currentUser?.username || 'User')}</span>
+                    <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className={`chat-bubble ${m.sender_role}`}>
+                    <div className="bubble-content">{m.content}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          <div className="form-group">
-            <label>{currentUser ? 'Your Message' : 'Message'}</label>
-            <textarea value={content} onChange={e => setContent(e.target.value)} rows="5" required />
-          </div>
-          <button type="submit" className="save-btn">Send Message</button>
-          {status && <p className="status-msg">{status}</p>}
-        </form>
+
+          <form className="contact-form" onSubmit={handleSubmit}>
+            {!currentUser ? (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>First Name</label>
+                    <input type="text" placeholder="First Name" required />
+                  </div>
+                  <div className="form-group">
+                    <label>Last Name</label>
+                    <input type="text" placeholder="Last Name" required />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>What's your email?</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" required />
+                </div>
+                <div className="form-group">
+                  <label>Your questions...</label>
+                  <textarea value={content} onChange={e => setContent(e.target.value)} rows="5" placeholder="How can we help you?" required />
+                </div>
+                <button type="submit" className="save-btn full-width">SEND MESSAGE</button>
+              </>
+            ) : (
+              // Logged in user: Chat style input if it feels like a conversation
+              <div className="reply-form" style={{ padding: '0', border: 'none' }}>
+                <div className="reply-input-wrapper">
+                  <input value={content} onChange={e => setContent(e.target.value)} placeholder="Say something..." required />
+                  <div className="reply-icons">
+                    <span className="reply-icon" onClick={() => alert('Attachment feature coming soon!')}>📎</span>
+                    <span className="reply-icon" onClick={() => alert('Emoji picker coming soon!')}>😊</span>
+                  </div>
+                </div>
+                <button type="submit" className="send-btn-circle" aria-label="Send">
+                  <span>➤</span>
+                </button>
+              </div>
+            )}
+            {status && <p className="status-msg">{status}</p>}
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -744,15 +786,31 @@ function AdminInbox() {
             <>
               <div className="chat-window">
                 {messages.map((m, i) => (
-                  <div key={i} className={`chat-bubble ${m.sender_role}`}>
-                    <div className="bubble-content">{m.content}</div>
-                    <div className="bubble-time">{new Date(m.created_at).toLocaleString()}</div>
+                  <div key={i} className={`chat-bubble-wrapper ${m.sender_role}`}>
+                    <div className="bubble-header">
+                      <span className="bubble-name">{m.sender_role === 'admin' ? 'You' : (selectedConv.user_name || 'Guest')}</span>
+                      <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className={`chat-bubble ${m.sender_role}`}>
+                      <div className="bubble-content">{m.content}</div>
+                    </div>
                   </div>
                 ))}
               </div>
               <form className="reply-form" onSubmit={handleReply}>
-                <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Type a reply..." required />
-                <button type="submit" style="margin-top: 10px;">Send</button>
+                <div className="reply-input-wrapper">
+                  <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Say something..." required />
+                  <div className="reply-icons">
+                    <span className="reply-icon" title="Attach" onClick={() => alert('Attachment feature coming soon!')}>📎</span>
+                    <span className="reply-icon" title="Image" onClick={() => alert('Image upload coming soon!')}>🖼️</span>
+                    <span className="reply-icon" title="Emoji" onClick={() => alert('Emoji picker coming soon!')}>😊</span>
+                    <span className="reply-icon" title="Voice" onClick={() => alert('Voice message coming soon!')}>🎤</span>
+                    <span className="reply-icon" title="Camera" onClick={() => alert('Camera access coming soon!')}>📷</span>
+                  </div>
+                </div>
+                <button type="submit" className="send-btn-circle" aria-label="Send">
+                  <span>➤</span>
+                </button>
               </form>
             </>
           ) : (
