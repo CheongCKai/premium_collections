@@ -5,7 +5,7 @@ const bcrypt  = require("bcryptjs");
 const jwt     = require("jsonwebtoken");
 
 const db                       = require("./db");
-const { requireAuth, requireAdmin, requireOperator } = require("./middleware/auth");
+const { requireAuth, requireAdmin, requireOperator, requireOperatorOnly } = require("./middleware/auth");
 
 const app = express();
 app.use(cors());
@@ -357,27 +357,25 @@ app.delete("/api/toys/:id", requireAdmin, (req, res) => {
   res.json({ message: "Toy deleted successfully." });
 });
 
-app.get("/api/admin/users", requireOperator, (req, res) => {
-  const users = db.prepare("SELECT id, username, email, role, must_reset_password, last_login_at, is_disabled, created_at FROM users ORDER BY created_at DESC").all();
+// Operator only: List all users
+app.get("/api/admin/users", requireOperatorOnly, (req, res) => {
+  const users = db.prepare("SELECT id, username, email, role, last_login_at, is_disabled, must_reset_password FROM users").all();
   res.json(users);
 });
 
-app.post("/api/admin/users/:id/disable", requireOperator, (req, res) => {
-  const result = db.prepare("UPDATE users SET is_disabled = 1 WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
-  res.json({ message: "User account disabled." });
-});
-
-app.post("/api/admin/users/:id/enable", requireOperator, (req, res) => {
-  const result = db.prepare("UPDATE users SET is_disabled = 0 WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
-  res.json({ message: "User account enabled." });
-});
-
-app.post("/api/admin/users/:id/reset-password", requireOperator, (req, res) => {
-  const result = db.prepare("UPDATE users SET must_reset_password = 1 WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
+// Operator only: Reset User Password
+app.post("/api/admin/users/:id/reset-password", requireOperatorOnly, (req, res) => {
+  const { id } = req.params;
+  db.prepare("UPDATE users SET must_reset_password = 1 WHERE id = ?").run(id);
   res.json({ message: "User will be forced to reset password on next login." });
+});
+
+// Operator only: Disable/Enable Account
+app.post("/api/admin/users/:id/:action", requireOperatorOnly, (req, res) => {
+  const { id, action } = req.params;
+  const is_disabled = action === 'disable' ? 1 : 0;
+  db.prepare("UPDATE users SET is_disabled = ? WHERE id = ?").run(is_disabled, id);
+  res.json({ message: `Account successfully ${action}d.` });
 });
 
 // ── Start Server ─────────────────────────────────────────────────────

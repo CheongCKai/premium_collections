@@ -35,10 +35,20 @@ const requireAdmin = (req, res, next) => {
 const requireOperator = (req, res, next) => {
   requireAuth(req, res, () => {
     if (req.user.role !== "admin" && req.user.role !== "operator") {
-      return res.status(403).json({ error: "Operator access required." });
+      return res.status(403).json({ error: "Operator or Admin access required." });
     }
     next();
   });
 };
 
-module.exports = { requireAuth, requireAdmin, requireOperator };
+// Specifically Operator only (no Admins)
+const requireOperatorOnly = (req, res, next) => {
+  requireAuth(req, res, () => {
+    if (req.user.role !== "operator") {
+      return res.status(403).json({ error: "Access restricted to operators only." });
+    }
+    next();
+  });
+};
+
+module.exports = { requireAuth, requireAdmin, requireOperator, requireOperatorOnly };
