@@ -46,7 +46,7 @@ function App() {
       .catch((err) => console.error('Fetch error:', err));
   }, []);
 
-  // ── Cart Persistence ──
+  // ── Cart Persistence & Sync ──
   useEffect(() => {
     if (currentUser) {
       const token = localStorage.getItem('token');
@@ -56,7 +56,6 @@ function App() {
         .then(res => res.json())
         .then(data => {
           if (data && data.items) {
-            // Map backend items to the expected frontend format
             setCartItems(data.items.map(item => ({
               toy: item,
               qty: item.qty,
@@ -66,14 +65,50 @@ function App() {
         })
         .catch(err => console.error('Load cart error:', err));
     } else {
-      setCartItems([]);
+      // Load from local storage for guests
+      const guestCart = JSON.parse(localStorage.getItem('guest_cart') || '[]');
+      setCartItems(guestCart);
     }
   }, [currentUser]);
 
+  // Save guest cart to local storage
+  useEffect(() => {
+    if (!currentUser) {
+      localStorage.setItem('guest_cart', JSON.stringify(cartItems));
+    }
+  }, [cartItems, currentUser]);
+
   // ── Auth Handlers ──
   const handleLoginSuccess = (user) => {
-    setCurrentUser(user);
-    setIsAuthOpen(false);
+    const token = localStorage.getItem('token');
+    const guestCart = JSON.parse(localStorage.getItem('guest_cart') || '[]');
+    
+    if (guestCart.length > 0) {
+      // Sync guest cart to server
+      const syncPromises = guestCart.map(item => 
+        fetch('/api/cart/items', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ toyId: item.toy.id, qty: item.qty })
+        })
+      );
+
+      Promise.all(syncPromises).then(() => {
+        localStorage.removeItem('guest_cart');
+        setCurrentUser(user);
+        setIsAuthOpen(false);
+      }).catch(err => {
+        console.error('Sync error:', err);
+        setCurrentUser(user);
+        setIsAuthOpen(false);
+      });
+    } else {
+      setCurrentUser(user);
+      setIsAuthOpen(false);
+    }
   };
 
   const handleLogout = () => {
@@ -87,8 +122,18 @@ function App() {
 
   // ── Cart Handlers ──
   const handleAddToCart = (toy) => {
+    const existing = cartItems.find(i => i.toy.id === toy.id);
+    if (existing) {
+      handleUpdateQty(toy.id, existing.qty + 1);
+      return;
+    }
+
+    const newItem = { toy, qty: 1 };
+
     if (!currentUser) {
-      setIsAuthOpen(true);
+      setCartItems(prev => [...prev, newItem]);
+      setCartBump(true);
+      setTimeout(() => setCartBump(false), 300);
       return;
     }
 
@@ -103,7 +148,6 @@ function App() {
     })
     .then(res => res.json())
     .then(() => {
-      // Refresh cart from backend to get the latest state (and cartItemId)
       fetch('/api/cart', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -122,6 +166,15 @@ function App() {
   };
 
   const handleUpdateQty = (toyId, newQty) => {
+    if (!currentUser) {
+      if (newQty <= 0) {
+        handleRemove(toyId);
+      } else {
+        setCartItems(prev => prev.map(i => i.toy.id === toyId ? { ...i, qty: newQty } : i));
+      }
+      return;
+    }
+
     const item = cartItems.find(i => i.toy.id === toyId);
     if (!item) return;
 
@@ -145,6 +198,11 @@ function App() {
   };
 
   const handleRemove = (toyId) => {
+    if (!currentUser) {
+      setCartItems(prev => prev.filter(i => i.toy.id !== toyId));
+      return;
+    }
+
     const item = cartItems.find(i => i.toy.id === toyId);
     if (!item) return;
 
@@ -320,10 +378,14 @@ function App() {
         )}
 
         {(view === 'admin') && (currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
-          <AdminPanel toys={toys} onToyUpdate={() => {
-            // Re-fetch toys after update
-            fetch('/api/toys').then(res => res.json()).then(data => setToys(data));
-          }} />
+          <AdminPanel 
+            currentUser={currentUser}
+            toys={toys} 
+            onToyUpdate={() => {
+              // Re-fetch toys after update
+              fetch('/api/toys').then(res => res.json()).then(data => setToys(data));
+            }} 
+          />
         )}
 
         {view === 'history' && currentUser && (
@@ -369,11 +431,11 @@ function App() {
 
 // ── Helper Components ──
 
-function AdminPanel({ toys, onToyUpdate }) {
+function AdminPanel({ currentUser, toys, onToyUpdate }) {
   const [updatingId, setUpdatingId] = useState(null);
   const [editingToy, setEditingToy] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'users'
+  const [activeTab, setActiveTab] = useState(currentUser?.role === 'admin' ? 'inventory' : 'users');
 
   const handleStockChange = (toyId, newStatus) => {
     setUpdatingId(toyId);
@@ -444,7 +506,7 @@ function AdminPanel({ toys, onToyUpdate }) {
             </button>
           )}
           <button 
-            className={`pill${activeTab === 'users' ? ' active' : ''} ${currentUser?.role === 'operator' ? 'active' : ''}`} 
+            className={`pill${activeTab === 'users' ? ' active' : ''}`} 
             onClick={() => setActiveTab('users')}
           >
             Users
