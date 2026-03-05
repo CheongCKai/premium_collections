@@ -931,7 +931,9 @@ function AdminUsersPanel() {
   };
 
   const handleResetPassword = (userId) => {
-    if (!confirm('Force this user to change password on next login?')) return;
+    const isWarning = confirm("⚠️ WARNING: This will force the user to reset their password. They will NOT be able to access the shop until they set a new password. \n\nAre you sure you want to proceed?");
+    if (!isWarning) return;
+    
     const token = localStorage.getItem('token');
     fetch(`/api/admin/users/${userId}/reset-password`, {
       method: 'POST',
@@ -947,7 +949,12 @@ function AdminUsersPanel() {
 
   const handleToggleDisable = (userId, disable) => {
     const action = disable ? 'disable' : 'enable';
-    if (!confirm(`Are you sure you want to ${action} this account?`)) return;
+    const warningMsg = disable 
+      ? "🚫 WARNING: DISABLING this account will immediately block the user from logging in or using the site. \n\nContinue with disabling?"
+      : "✅ Re-enable this account?";
+      
+    if (!confirm(warningMsg)) return;
+    
     const token = localStorage.getItem('token');
     fetch(`/api/admin/users/${userId}/${action}`, {
       method: 'POST',
@@ -979,24 +986,28 @@ function AdminUsersPanel() {
         <tbody>
           {users.map(u => (
             <tr key={u.id}>
-              <td>{u.username}</td>
-              <td>{u.email}</td>
-              <td><span className={`role-badge ${u.role}`}>{u.role}</span></td>
-              <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never'}</td>
+              <td style={{ fontWeight: '600' }}>{u.username}</td>
+              <td style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={u.email}>{u.email}</td>
+              <td><span className={`role-badge ${u.role}`} style={{ fontSize: '0.7rem', padding: '2px 6px' }}>{u.role}</span></td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                {u.last_login_at 
+                  ? new Date(u.last_login_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + 
+                    new Date(u.last_login_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) 
+                  : 'Never'}
+              </td>
               <td>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {u.must_reset_password ? 
-                    <span style={{ color: '#f39c12', fontSize: '0.75rem', fontWeight: '700' }}>⌛ Password Reset Pending</span> : 
-                    <span style={{ color: '#2ecc71', fontSize: '0.75rem', fontWeight: '700' }}>✓ Password Set</span>
-                  }
-                  {u.is_disabled ? 
-                    <span style={{ color: '#ff4d4d', fontSize: '0.75rem', fontWeight: '700' }}>🚫 Account Disabled</span> : 
-                    <span style={{ color: '#2ecc71', fontSize: '0.75rem', fontWeight: '700' }}>🟢 Account Active</span>
-                  }
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {u.is_disabled ? (
+                    <span style={{ color: '#ff4d4d', fontSize: '0.75rem', fontWeight: '700' }}>🚫 Disabled</span>
+                  ) : u.must_reset_password ? (
+                    <span style={{ color: '#f39c12', fontSize: '0.75rem', fontWeight: '700' }}>⌛ Pending Reset</span>
+                  ) : (
+                    <span style={{ color: '#2ecc71', fontSize: '0.75rem', fontWeight: '700' }}>🟢 Active</span>
+                  )}
                 </div>
               </td>
               <td>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
                   <button 
                     className="edit-btn" 
                     onClick={() => handleResetPassword(u.id)}

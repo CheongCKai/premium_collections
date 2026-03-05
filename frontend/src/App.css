@@ -520,9 +520,9 @@
 
 /* ── Admin Management ── */
 .admin-panel {
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 4rem auto;
-  padding: 0 2rem;
+  padding: 0 1rem;
 }
 
 .admin-grid {
@@ -530,7 +530,7 @@
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .admin-table {
@@ -540,8 +540,10 @@
 }
 
 .admin-table th, .admin-table td {
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 0.6rem;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  font-size: 0.85rem;
 }
 
 .admin-table th {
@@ -568,13 +570,13 @@
 }
 
 .delete-btn {
-  padding: 0.4rem 0.8rem;
+  padding: 0.35rem 0.6rem;
   border-radius: var(--radius-md);
   background: #fff;
   border: 1px solid #fee2e2;
   color: #ef4444;
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -683,15 +685,15 @@
 }
 
 .edit-btn {
-  padding: 0.4rem 0.8rem;
+  padding: 0.35rem 0.6rem;
   border-radius: var(--radius-md);
   background: #f1f5f9;
   border: 1px solid var(--border);
   color: var(--accent);
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
-  margin-right: 0.5rem;
+  margin-right: 0.2rem;
   transition: all 0.2s;
 }
 
