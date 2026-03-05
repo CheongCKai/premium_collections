@@ -21,16 +21,15 @@ export default function ToyCard({ toy, onAddToCart }) {
 
   return (
     <div className={`toy-card${isSoldOut ? ' is-sold-out' : ''}`}>
-      {toy.badge && (
-        <span className={`toy-badge badge-${toy.badge.toLowerCase()}`}>{toy.badge}</span>
-      )}
-
-      {isSoldOut && (
-        <span className="toy-badge badge-sold_out">Sold Out</span>
-      )}
-      {!isSoldOut && isLowStock && (
-        <span className="toy-badge badge-low">Low Stock</span>
-      )}
+      <div className="toy-badges-stack">
+        {isSoldOut ? (
+          <span className="toy-badge badge-sold_out">Sold Out</span>
+        ) : isLowStock ? (
+          <span className="toy-badge badge-low">Low Stock</span>
+        ) : toy.badge ? (
+          <span className={`toy-badge badge-${toy.badge.toLowerCase()}`}>{toy.badge}</span>
+        ) : null}
+      </div>
 
       <div className="toy-emoji-wrap">
         <span className="toy-emoji">{toy.emoji}</span>

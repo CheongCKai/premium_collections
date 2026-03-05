@@ -381,9 +381,14 @@ function App() {
           <AdminPanel 
             currentUser={currentUser}
             toys={toys} 
-            onToyUpdate={() => {
-              // Re-fetch toys after update
-              fetch('/api/toys').then(res => res.json()).then(data => setToys(data));
+            onToyUpdate={async () => {
+              try {
+                const res = await fetch('/api/toys');
+                const data = await res.json();
+                setToys(data);
+              } catch (err) {
+                console.error('Failed to sync toys:', err);
+              }
             }} 
           />
         )}
@@ -471,8 +476,8 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
       );
 
       await Promise.all(promises);
+      await onToyUpdate(); // Wait for server data to sync
       setPendingStockChanges({});
-      onToyUpdate();
       alert('Inventory updated successfully!');
     } catch (err) {
       console.error(err);
