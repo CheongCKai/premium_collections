@@ -251,7 +251,7 @@ function App() {
     <>
       {/* Navbar */}
       <nav className="navbar">
-        <div className="navbar-brand">
+        <div className="navbar-brand" onClick={() => setView('shop')} style={{ cursor: 'pointer' }}>
           <span className="brand-icon">🎁</span>
           <span className="brand-gradient">Premium Collectable Collections</span>
         </div>
