@@ -436,27 +436,54 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
   const [editingToy, setEditingToy] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [activeTab, setActiveTab] = useState(currentUser?.role === 'admin' ? 'inventory' : 'users');
+  const [pendingStockChanges, setPendingStockChanges] = useState({}); // { toyId: status }
+
+  const hasPending = Object.keys(pendingStockChanges).length > 0;
 
   const handleStockChange = (toyId, newStatus) => {
-    setUpdatingId(toyId);
+    // Check if the new status is different from the original status
+    const originalToy = toys.find(t => t.id === toyId);
+    if (originalToy.stock_status === newStatus) {
+      setPendingStockChanges(prev => {
+        const next = { ...prev };
+        delete next[toyId];
+        return next;
+      });
+    } else {
+      setPendingStockChanges(prev => ({ ...prev, [toyId]: newStatus }));
+    }
+  };
+
+  const handleBulkSave = async () => {
+    setUpdatingId('bulk');
     const token = localStorage.getItem('token');
-    fetch(`/api/toys/${toyId}/stock`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ stock_status: newStatus })
-    })
-    .then(res => res.json())
-    .then(() => {
+    
+    try {
+      const promises = Object.entries(pendingStockChanges).map(([id, status]) => 
+        fetch(`/api/toys/${id}/stock`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ stock_status: status })
+        })
+      );
+
+      await Promise.all(promises);
+      setPendingStockChanges({});
       onToyUpdate();
-      setUpdatingId(null);
-    })
-    .catch(err => {
+      alert('Inventory updated successfully!');
+    } catch (err) {
       console.error(err);
+      alert('Failed to update some items.');
+    } finally {
       setUpdatingId(null);
-    });
+    }
+  };
+
+  const handleCancelChanges = () => {
+    setPendingStockChanges({});
   };
 
   const handleDelete = (toyId) => {
@@ -494,27 +521,54 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
 
   return (
     <div className="admin-panel">
-      <div className="admin-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '20px' }}>
-        <h2 className="section-title">Admin Management</h2>
-        <div className="admin-tabs" style={{ display: 'flex', gap: '10px' }}>
-          {currentUser?.role === 'admin' && (
-            <button 
-              className={`pill${activeTab === 'inventory' ? ' active' : ''}`} 
-              onClick={() => setActiveTab('inventory')}
-            >
-              Inventory
-            </button>
-          )}
-          <button 
-            className={`pill${activeTab === 'users' ? ' active' : ''}`} 
-            onClick={() => setActiveTab('users')}
-          >
-            Users
-          </button>
+      <div className="admin-header" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <h2 className="section-title">Admin Management</h2>
+          <div className="admin-tabs" style={{ display: 'flex', gap: '10px' }}>
+            {currentUser?.role === 'admin' && (
+              <button 
+                className={`pill${activeTab === 'inventory' ? ' active' : ''}`} 
+                onClick={() => setActiveTab('inventory')}
+              >
+                Inventory
+              </button>
+            )}
+            {currentUser?.role === 'operator' && (
+              <button 
+                className={`pill${activeTab === 'users' ? ' active' : ''}`} 
+                onClick={() => setActiveTab('users')}
+              >
+                Users
+              </button>
+            )}
+          </div>
         </div>
-        {activeTab === 'inventory' && currentUser?.role === 'admin' && (
-          <button className="add-toy-btn" onClick={() => setIsAdding(true)}>+ Add New Toy</button>
-        )}
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {hasPending && activeTab === 'inventory' && (
+            <>
+              <button 
+                className="cancel-link" 
+                onClick={handleCancelChanges}
+                disabled={updatingId === 'bulk'}
+                style={{ padding: '0.6rem 1rem' }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="add-toy-btn" 
+                onClick={handleBulkSave}
+                disabled={updatingId === 'bulk'}
+                style={{ background: 'var(--accent)', minWidth: '130px' }}
+              >
+                {updatingId === 'bulk' ? 'Saving...' : 'Save Updates'}
+              </button>
+            </>
+          )}
+          {activeTab === 'inventory' && currentUser?.role === 'admin' && (
+            <button className="add-toy-btn" onClick={() => setIsAdding(true)}>+ Add New Toy</button>
+          )}
+        </div>
       </div>
 
       {(isAdding || editingToy) && (
@@ -555,9 +609,10 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
                   <td>
                     <select
                       className="stock-select"
-                      value={toy.stock_status}
+                      value={pendingStockChanges[toy.id] || toy.stock_status}
                       onChange={(e) => handleStockChange(toy.id, e.target.value)}
-                      disabled={updatingId === toy.id}
+                      disabled={updatingId === 'bulk'}
+                      style={pendingStockChanges[toy.id] ? { borderColor: 'var(--accent)', background: 'rgba(109, 40, 217, 0.05)' } : {}}
                     >
                       <option value="available">Available</option>
                       <option value="low">Low Stock</option>
