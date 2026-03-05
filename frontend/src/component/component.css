@@ -18,11 +18,19 @@
   border-color: #c4b5fd;
 }
 
-/* Badge */
-.toy-badge {
+.toy-badges-stack {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  z-index: 10;
+}
+
+.toy-badge {
+  position: static; /* No longer absolute individually */
   padding: 0.25rem 0.65rem;
   border-radius: var(--radius-full);
   font-size: 0.7rem;
@@ -30,7 +38,6 @@
   color: #fff;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  z-index: 1;
 }
 
 /* Stock status colors */

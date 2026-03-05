@@ -94,6 +94,10 @@ try {
 } catch (e) {}
 
 try {
+  db.prepare("ALTER TABLE toys ADD COLUMN stock_status TEXT NOT NULL DEFAULT 'available'").run();
+} catch (e) {}
+
+try {
   db.prepare("ALTER TABLE users ADD COLUMN username TEXT").run();
 } catch (e) {}
 

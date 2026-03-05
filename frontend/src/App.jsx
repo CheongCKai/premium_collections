@@ -22,7 +22,13 @@ function App() {
   const [cartBump, setCartBump] = useState(false);
   const [view, setView] = useState('shop'); // 'shop' | 'admin' | 'history'
   const [isShopDropdownOpen, setIsShopDropdownOpen] = useState(false);
+  const [toast, setToast] = useState(null); // { message, type }
   const dropdownTimeoutRef = useRef(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 1000); // Auto-hide after 1 second
+  };
 
   const handleDropdownEnter = () => {
     if (dropdownTimeoutRef.current) {
@@ -31,11 +37,11 @@ function App() {
     }
     setIsShopDropdownOpen(true);
   };
-
+// 2 seconds delay before closing the dropdown
   const handleDropdownLeave = () => {
     dropdownTimeoutRef.current = setTimeout(() => {
       setIsShopDropdownOpen(false);
-    }, 3000);
+    }, 2000);
   };
 
 
@@ -231,12 +237,12 @@ function App() {
       .then(res => res.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
-        alert(`Order #${data.orderId} completed! Total: $${data.total.toFixed(2)}`);
+        showToast(`Order #${data.orderId} completed! Total: $${data.total.toFixed(2)}`);
         setCartItems([]);
         setCartOpen(false);
       })
       .catch(err => {
-        alert('Checkout failed: ' + err.message);
+        showToast('Checkout failed: ' + err.message, 'error');
       });
     }
   };
@@ -390,6 +396,7 @@ function App() {
                 console.error('Failed to sync toys:', err);
               }
             }} 
+            showToast={showToast}
           />
         )}
 
@@ -402,7 +409,7 @@ function App() {
         )}
 
         {view === 'inbox' && (currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
-          <AdminInbox />
+          <AdminInbox showToast={showToast} />
         )}
       </main>
 
@@ -430,13 +437,19 @@ function App() {
           </div>
         </div>
       )}
+
+      {toast && (
+        <div className={`toast-notification ${toast.type}`}>
+          {toast.message}
+        </div>
+      )}
     </>
   );
 }
 
 // ── Helper Components ──
 
-function AdminPanel({ currentUser, toys, onToyUpdate }) {
+function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
   const [updatingId, setUpdatingId] = useState(null);
   const [editingToy, setEditingToy] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -464,24 +477,29 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
     const token = localStorage.getItem('token');
     
     try {
-      const promises = Object.entries(pendingStockChanges).map(([id, status]) => 
-        fetch(`/api/toys/${id}/stock`, {
+      const results = await Promise.all(Object.entries(pendingStockChanges).map(async ([id, status]) => {
+        const res = await fetch(`/api/toys/${id}/stock`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({ stock_status: status })
-        })
-      );
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to update toy ${id}`);
+        }
+        return res.json();
+      }));
 
-      await Promise.all(promises);
-      await onToyUpdate(); // Wait for server data to sync
+      console.log('Bulk update results:', results);
+      await onToyUpdate(); // Re-fetch all toys from server
       setPendingStockChanges({});
-      alert('Inventory updated successfully!');
+      showToast('Inventory updated successfully!');
     } catch (err) {
-      console.error(err);
-      alert('Failed to update some items.');
+      console.error('Bulk update error:', err);
+      showToast('Update failed: ' + err.message, 'error');
     } finally {
       setUpdatingId(null);
     }
@@ -592,7 +610,6 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
       {activeTab === 'inventory' ? (
         <div className="admin-grid">
           <table className="admin-table">
-            {/* ... existing table head ... */}
             <thead>
               <tr>
                 <th>Toy</th>
@@ -634,7 +651,7 @@ function AdminPanel({ currentUser, toys, onToyUpdate }) {
           </table>
         </div>
       ) : (
-        <AdminUsersPanel />
+        <AdminUsersPanel showToast={showToast} />
       )}
     </div>
   );
@@ -855,8 +872,8 @@ function ContactUs({ currentUser }) {
                 <div className="reply-input-wrapper">
                   <input value={content} onChange={e => setContent(e.target.value)} placeholder="Say something..." required />
                   <div className="reply-icons">
-                    <span className="reply-icon" onClick={() => alert('Attachment feature coming soon!')}>📎</span>
-                    <span className="reply-icon" onClick={() => alert('Emoji picker coming soon!')}>😊</span>
+                    <span className="reply-icon" onClick={() => showToast('Attachment coming soon!', 'info')}>📎</span>
+                    <span className="reply-icon" onClick={() => showToast('Emoji picker coming soon!', 'info')}>😊</span>
                   </div>
                 </div>
                 <button type="submit" className="send-btn-circle" aria-label="Send">
@@ -872,7 +889,7 @@ function ContactUs({ currentUser }) {
   );
 }
 
-function AdminInbox() {
+function AdminInbox({ showToast }) {
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -909,10 +926,12 @@ function AdminInbox() {
       },
       body: JSON.stringify({ content: reply })
     })
-    .then(() => {
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to send reply');
       setMessages(prev => [...prev, { content: reply, sender_role: currentUser.role === 'admin' ? 'admin' : 'operator', created_at: new Date().toISOString() }]);
       setReply('');
-    });
+    })
+    .catch(err => showToast(err.message, 'error'));
   };
 
   return (
@@ -948,11 +967,11 @@ function AdminInbox() {
                 <div className="reply-input-wrapper">
                   <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Say something..." required />
                   <div className="reply-icons">
-                    <span className="reply-icon" title="Attach" onClick={() => alert('Attachment feature coming soon!')}>📎</span>
-                    <span className="reply-icon" title="Image" onClick={() => alert('Image upload coming soon!')}>🖼️</span>
-                    <span className="reply-icon" title="Emoji" onClick={() => alert('Emoji picker coming soon!')}>😊</span>
-                    <span className="reply-icon" title="Voice" onClick={() => alert('Voice message coming soon!')}>🎤</span>
-                    <span className="reply-icon" title="Camera" onClick={() => alert('Camera access coming soon!')}>📷</span>
+                    <span className="reply-icon" title="Attach" onClick={() => showToast('Attachment feature coming soon!', 'info')}>📎</span>
+                    <span className="reply-icon" title="Image" onClick={() => showToast('Image upload coming soon!', 'info')}>🖼️</span>
+                    <span className="reply-icon" title="Emoji" onClick={() => showToast('Emoji picker coming soon!', 'info')}>😊</span>
+                    <span className="reply-icon" title="Voice" onClick={() => showToast('Voice message coming soon!', 'info')}>🎤</span>
+                    <span className="reply-icon" title="Camera" onClick={() => showToast('Camera access coming soon!', 'info')}>📷</span>
                   </div>
                 </div>
                 <button type="submit" className="send-btn-circle" aria-label="Send">
@@ -969,7 +988,7 @@ function AdminInbox() {
   );
 }
 
-function AdminUsersPanel() {
+function AdminUsersPanel({ showToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1001,10 +1020,10 @@ function AdminUsersPanel() {
     })
     .then(res => res.json())
     .then(data => {
-      alert(data.message || 'Password reset flagged.');
+      showToast(data.message || 'Password reset flagged.');
       fetchUsers();
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => showToast('Error: ' + err.message, 'error'));
   };
 
   const handleToggleDisable = (userId, disable) => {
@@ -1022,10 +1041,10 @@ function AdminUsersPanel() {
     })
     .then(res => res.json())
     .then(data => {
-      alert(data.message || `Account ${action}d.`);
+      showToast(data.message || `Account ${action}d.`);
       fetchUsers();
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => showToast('Error: ' + err.message, 'error'));
   };
 
   if (loading) return <div>Loading users...</div>;
