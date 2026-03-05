@@ -73,6 +73,12 @@ app.post("/api/auth/login", (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash))
     return res.status(401).json({ error: "Invalid username/email or password." });
 
+  if (user.is_disabled)
+    return res.status(403).json({ error: "Your account has been disabled. Please contact support." });
+
+  // Update last login
+  db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
+
   const token = signToken(user);
   const { password_hash, ...safeUser } = user; // never send hash to client
   res.json({ token, user: safeUser, mustReset: !!user.must_reset_password });
@@ -279,31 +285,57 @@ app.get("/api/conversations", requireAuth, (req, res) => {
   res.json({ conversation: conv, messages });
 });
 
-// Admin: List all conversations
-app.get("/api/admin/conversations", requireAdmin, (req, res) => {
-  const convs = db.prepare(`
+// Admin/Operator: List conversations
+app.get("/api/admin/conversations", requireOperator, (req, res) => {
+  let query = `
     SELECT c.*, u.username as user_name, u.email as user_email,
     (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
     FROM conversations c
     LEFT JOIN users u ON u.id = c.user_id
-    ORDER BY updated_at DESC
-  `).all();
+  `;
+  
+  const params = [];
+  if (req.user.role === 'operator') {
+    // Operator only sees their own conversation (to Admin)
+    query += " WHERE c.user_id = ?";
+    params.push(req.user.id);
+  }
+
+  query += " ORDER BY updated_at DESC";
+  
+  const convs = db.prepare(query).all(...params);
   res.json(convs);
 });
 
-// Admin: Get specific conversation history
-app.get("/api/admin/conversations/:id", requireAdmin, (req, res) => {
+// Admin/Operator: Get specific conversation history
+app.get("/api/admin/conversations/:id", requireOperator, (req, res) => {
+  const conv = db.prepare("SELECT * FROM conversations WHERE id = ?").get(req.params.id);
+  if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+  if (req.user.role === 'operator' && conv.user_id !== req.user.id) {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
   const messages = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(req.params.id);
   res.json(messages);
 });
 
-// Admin: Reply to a conversation
-app.post("/api/admin/conversations/:id/reply", requireAdmin, (req, res) => {
+// Admin/Operator: Reply to a conversation
+app.post("/api/admin/conversations/:id/reply", requireOperator, (req, res) => {
   const { content } = req.body;
   if (!content) return res.status(400).json({ error: "Content is required" });
 
-  db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, 'admin', ?)")
-    .run(req.params.id, content);
+  const conv = db.prepare("SELECT * FROM conversations WHERE id = ?").get(req.params.id);
+  if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+  if (req.user.role === 'operator' && conv.user_id !== req.user.id) {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const senderRole = req.user.role === 'admin' ? 'admin' : 'operator';
+
+  db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
+    .run(req.params.id, senderRole, content);
   
   db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(req.params.id);
 
@@ -326,8 +358,20 @@ app.delete("/api/toys/:id", requireAdmin, (req, res) => {
 });
 
 app.get("/api/admin/users", requireOperator, (req, res) => {
-  const users = db.prepare("SELECT id, username, email, role, must_reset_password, created_at FROM users ORDER BY created_at DESC").all();
+  const users = db.prepare("SELECT id, username, email, role, must_reset_password, last_login_at, is_disabled, created_at FROM users ORDER BY created_at DESC").all();
   res.json(users);
+});
+
+app.post("/api/admin/users/:id/disable", requireOperator, (req, res) => {
+  const result = db.prepare("UPDATE users SET is_disabled = 1 WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
+  res.json({ message: "User account disabled." });
+});
+
+app.post("/api/admin/users/:id/enable", requireOperator, (req, res) => {
+  const result = db.prepare("UPDATE users SET is_disabled = 0 WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
+  res.json({ message: "User account enabled." });
 });
 
 app.post("/api/admin/users/:id/reset-password", requireOperator, (req, res) => {

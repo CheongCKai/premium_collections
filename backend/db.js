@@ -109,6 +109,14 @@ try {
   db.prepare("ALTER TABLE users ADD COLUMN must_reset_password INTEGER NOT NULL DEFAULT 0").run();
 } catch (e) {}
 
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN last_login_at TEXT").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0").run();
+} catch (e) {}
+
 // ── Seed Admin & Operator Accounts ──────────────────────────────────
 const seedAccounts = () => {
   // Admin

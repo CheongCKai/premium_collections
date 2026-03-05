@@ -215,7 +215,7 @@ function App() {
                 <button className="dropdown-item" onClick={() => { setView('contact'); setIsShopDropdownOpen(false); }}>Contact Us</button>
               </div>
             </div>
-            {currentUser && (
+            {currentUser && currentUser.role !== 'operator' && (
               <button className={`nav-link${view === 'history' ? ' active' : ''}`} onClick={() => setView('history')}>History</button>
             )}
             {(currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
@@ -435,20 +435,22 @@ function AdminPanel({ toys, onToyUpdate }) {
       <div className="admin-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '20px' }}>
         <h2 className="section-title">Admin Management</h2>
         <div className="admin-tabs" style={{ display: 'flex', gap: '10px' }}>
+          {currentUser?.role === 'admin' && (
+            <button 
+              className={`pill${activeTab === 'inventory' ? ' active' : ''}`} 
+              onClick={() => setActiveTab('inventory')}
+            >
+              Inventory
+            </button>
+          )}
           <button 
-            className={`pill${activeTab === 'inventory' ? ' active' : ''}`} 
-            onClick={() => setActiveTab('inventory')}
-          >
-            Inventory
-          </button>
-          <button 
-            className={`pill${activeTab === 'users' ? ' active' : ''}`} 
+            className={`pill${activeTab === 'users' ? ' active' : ''} ${currentUser?.role === 'operator' ? 'active' : ''}`} 
             onClick={() => setActiveTab('users')}
           >
             Users
           </button>
         </div>
-        {activeTab === 'inventory' && (
+        {activeTab === 'inventory' && currentUser?.role === 'admin' && (
           <button className="add-toy-btn" onClick={() => setIsAdding(true)}>+ Add New Toy</button>
         )}
       </div>
@@ -753,6 +755,7 @@ function AdminInbox() {
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState('');
+  const [currentUser] = useState(() => JSON.parse(localStorage.getItem('user')));
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -785,14 +788,14 @@ function AdminInbox() {
       body: JSON.stringify({ content: reply })
     })
     .then(() => {
-      setMessages(prev => [...prev, { content: reply, sender_role: 'admin', created_at: new Date().toISOString() }]);
+      setMessages(prev => [...prev, { content: reply, sender_role: currentUser.role === 'admin' ? 'admin' : 'operator', created_at: new Date().toISOString() }]);
       setReply('');
     });
   };
 
   return (
     <div className="inbox-page">
-      <h2 className="section-title">Admin Inbox</h2>
+      <h2 className="section-title">{currentUser.role === 'admin' ? 'Admin Inbox' : 'Chat with Admin'}</h2>
       <div className="inbox-container">
         <div className="conv-list">
           {conversations.map(c => (
@@ -880,6 +883,22 @@ function AdminUsersPanel() {
     .catch(err => alert('Error: ' + err.message));
   };
 
+  const handleToggleDisable = (userId, disable) => {
+    const action = disable ? 'disable' : 'enable';
+    if (!confirm(`Are you sure you want to ${action} this account?`)) return;
+    const token = localStorage.getItem('token');
+    fetch(`/api/admin/users/${userId}/${action}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.message || `Account ${action}d.`);
+      fetchUsers();
+    })
+    .catch(err => alert('Error: ' + err.message));
+  };
+
   if (loading) return <div>Loading users...</div>;
 
   return (
@@ -890,6 +909,7 @@ function AdminUsersPanel() {
             <th>Username</th>
             <th>Email</th>
             <th>Role</th>
+            <th>Last Login</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -900,20 +920,45 @@ function AdminUsersPanel() {
               <td>{u.username}</td>
               <td>{u.email}</td>
               <td><span className={`role-badge ${u.role}`}>{u.role}</span></td>
+              <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never'}</td>
               <td>
-                {u.must_reset_password ? 
-                  <span style={{ color: '#ff4d4d', fontSize: '0.85rem' }}>⌛ Pending Reset</span> : 
-                  <span style={{ color: '#2ecc71', fontSize: '0.85rem' }}>✓ Active</span>
-                }
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {u.must_reset_password ? 
+                    <span style={{ color: '#f39c12', fontSize: '0.75rem', fontWeight: '700' }}>⌛ Password Reset Pending</span> : 
+                    <span style={{ color: '#2ecc71', fontSize: '0.75rem', fontWeight: '700' }}>✓ Password Set</span>
+                  }
+                  {u.is_disabled ? 
+                    <span style={{ color: '#ff4d4d', fontSize: '0.75rem', fontWeight: '700' }}>🚫 Account Disabled</span> : 
+                    <span style={{ color: '#2ecc71', fontSize: '0.75rem', fontWeight: '700' }}>🟢 Account Active</span>
+                  }
+                </div>
               </td>
               <td>
-                <button 
-                  className="edit-btn" 
-                  onClick={() => handleResetPassword(u.id)}
-                  style={{ background: '#f39c12' }}
-                >
-                  Reset Password
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    className="edit-btn" 
+                    onClick={() => handleResetPassword(u.id)}
+                    style={{ background: '#f39c12', color: '#fff', border: 'none' }}
+                  >
+                    Reset Password
+                  </button>
+                  {u.is_disabled ? (
+                    <button 
+                      className="edit-btn" 
+                      onClick={() => handleToggleDisable(u.id, false)}
+                      style={{ background: '#2ecc71', color: '#fff', border: 'none' }}
+                    >
+                      Enable Account
+                    </button>
+                  ) : (
+                    <button 
+                      className="delete-btn" 
+                      onClick={() => handleToggleDisable(u.id, true)}
+                    >
+                      Disable Account
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
