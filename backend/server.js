@@ -5,7 +5,7 @@ const bcrypt  = require("bcryptjs");
 const jwt     = require("jsonwebtoken");
 
 const db                       = require("./db");
-const { requireAuth, requireAdmin } = require("./middleware/auth");
+const { requireAuth, requireAdmin, requireOperator } = require("./middleware/auth");
 
 const app = express();
 app.use(cors());
@@ -48,8 +48,8 @@ app.post("/api/auth/register", (req, res) => {
 
   const password_hash = bcrypt.hashSync(password, 10);
   const result = db
-    .prepare("INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, 'user')")
-    .run(username, email, password_hash);
+    .prepare("INSERT INTO users (username, name, email, password_hash, role) VALUES (?, ?, ?, ?, 'user')")
+    .run(username, username, email, password_hash);
 
   const user = db
     .prepare("SELECT id, username, email, role, created_at FROM users WHERE id = ?")
@@ -67,7 +67,7 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(400).json({ error: "Username/Email and password are required." });
 
   const user = db
-    .prepare("SELECT * FROM users WHERE email = ? OR username = ?")
+    .prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE")
     .get(identifier, identifier);
 
   if (!user || !bcrypt.compareSync(password, user.password_hash))
@@ -75,7 +75,18 @@ app.post("/api/auth/login", (req, res) => {
 
   const token = signToken(user);
   const { password_hash, ...safeUser } = user; // never send hash to client
-  res.json({ token, user: safeUser });
+  res.json({ token, user: safeUser, mustReset: !!user.must_reset_password });
+});
+
+// POST /api/auth/change-password (protected)
+app.post("/api/auth/change-password", requireAuth, (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6)
+    return res.status(400).json({ error: "New password must be at least 6 characters." });
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare("UPDATE users SET password_hash = ?, must_reset_password = 0 WHERE id = ?").run(hash, req.user.id);
+  res.json({ message: "Password updated successfully." });
 });
 
 // GET /api/auth/me  (protected)
@@ -314,9 +325,15 @@ app.delete("/api/toys/:id", requireAdmin, (req, res) => {
   res.json({ message: "Toy deleted successfully." });
 });
 
-app.get("/api/admin/users", requireAdmin, (req, res) => {
-  const users = db.prepare("SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC").all();
+app.get("/api/admin/users", requireOperator, (req, res) => {
+  const users = db.prepare("SELECT id, username, email, role, must_reset_password, created_at FROM users ORDER BY created_at DESC").all();
   res.json(users);
+});
+
+app.post("/api/admin/users/:id/reset-password", requireOperator, (req, res) => {
+  const result = db.prepare("UPDATE users SET must_reset_password = 1 WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: "User not found." });
+  res.json({ message: "User will be forced to reset password on next login." });
 });
 
 // ── Start Server ─────────────────────────────────────────────────────

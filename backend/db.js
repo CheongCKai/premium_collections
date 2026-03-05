@@ -16,6 +16,7 @@ db.exec(`
     email        TEXT    NOT NULL UNIQUE,
     password_hash TEXT   NOT NULL,
     role         TEXT    NOT NULL DEFAULT 'user',
+    must_reset_password INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -87,22 +88,47 @@ db.exec(`
   );
 `);
 
-// ── Migration: Add description if missing ─────────────────────────
+// ── Migration: Add columns and indexes if missing ──────────────────
 try {
   db.prepare("ALTER TABLE toys ADD COLUMN description TEXT").run();
-} catch (e) {
-  // Column already exists or table doesn't exist yet
-}
+} catch (e) {}
 
-// ── Seed Admin Account ─────────────────────────────────────────────
-const seedAdmin = () => {
-  const exists = db.prepare("SELECT id FROM users WHERE email = ?").get("admin");
-  if (!exists) {
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN username TEXT").run();
+} catch (e) {}
+
+try {
+  db.prepare("UPDATE users SET username = name WHERE username IS NULL OR username = ''").run();
+} catch (e) {}
+
+try {
+  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username COLLATE NOCASE)").run();
+} catch (e) {}
+
+try {
+  db.prepare("ALTER TABLE users ADD COLUMN must_reset_password INTEGER NOT NULL DEFAULT 0").run();
+} catch (e) {}
+
+// ── Seed Admin & Operator Accounts ──────────────────────────────────
+const seedAccounts = () => {
+  // Admin
+  const adminExists = db.prepare("SELECT id FROM users WHERE username = ? OR email = ?").get("admin", "admin@premium.com");
+  if (!adminExists) {
     const hash = bcrypt.hashSync("admin123", 10);
     db.prepare(
-      "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)"
-    ).run("admin", "admin@premium.com", hash, "admin");
-    console.log("✅ Admin account seeded: admin@premium.com / admin123");
+      "INSERT INTO users (username, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)"
+    ).run("admin", "Admin User", "admin@premium.com", hash, "admin");
+    console.log("✅ Admin account seeded: admin (username) / admin123");
+  }
+
+  // Operator
+  const operatorExists = db.prepare("SELECT id FROM users WHERE username = ?").get("admin1");
+  if (!operatorExists) {
+    const hash = bcrypt.hashSync("admin123", 10);
+    db.prepare(
+      "INSERT INTO users (username, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)"
+    ).run("admin1", "Operator User", "operator@premium.com", hash, "operator");
+    console.log("✅ Operator account seeded: admin1 (username) / admin123");
   }
 };
 
@@ -134,7 +160,7 @@ const seedToys = () => {
   console.log(`✅ ${toys.length} toys seeded into database`);
 };
 
-seedAdmin();
+seedAccounts();
 seedToys();
 
 module.exports = db;

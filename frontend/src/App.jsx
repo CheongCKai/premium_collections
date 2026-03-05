@@ -218,10 +218,10 @@ function App() {
             {currentUser && (
               <button className={`nav-link${view === 'history' ? ' active' : ''}`} onClick={() => setView('history')}>History</button>
             )}
-            {currentUser && currentUser.role === 'admin' && (
+            {(currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
               <button className={`nav-link${view === 'admin' ? ' active' : ''}`} onClick={() => setView('admin')}>Admin</button>
             )}
-            {currentUser && currentUser.role === 'admin' && (
+            {(currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
               <button className={`nav-link${view === 'inbox' ? ' active' : ''}`} onClick={() => setView('inbox')}>Inbox</button>
             )}
           </nav>
@@ -229,8 +229,8 @@ function App() {
           {currentUser ? (
             <div className="navbar-user">
               <span className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</span>
-              <span className="user-name">{currentUser.name}</span>
-              {currentUser.role === 'admin' && <span className="admin-badge">Admin</span>}
+              <span className="user-name">{currentUser.username || currentUser.name}</span>
+              {(currentUser.role === 'admin' || currentUser.role === 'operator') && <span className="admin-badge">{currentUser.role === 'admin' ? 'Admin' : 'Operator'}</span>}
             </div>
           ) : (
             <button className="login-btn" onClick={() => setIsAuthOpen(true)}>Login</button>
@@ -319,7 +319,7 @@ function App() {
           </>
         )}
 
-        {view === 'admin' && currentUser?.role === 'admin' && (
+        {(view === 'admin') && (currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
           <AdminPanel toys={toys} onToyUpdate={() => {
             // Re-fetch toys after update
             fetch('/api/toys').then(res => res.json()).then(data => setToys(data));
@@ -334,7 +334,7 @@ function App() {
           <ContactUs currentUser={currentUser} />
         )}
 
-        {view === 'inbox' && currentUser?.role === 'admin' && (
+        {view === 'inbox' && (currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
           <AdminInbox />
         )}
       </main>
@@ -373,6 +373,7 @@ function AdminPanel({ toys, onToyUpdate }) {
   const [updatingId, setUpdatingId] = useState(null);
   const [editingToy, setEditingToy] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'users'
 
   const handleStockChange = (toyId, newStatus) => {
     setUpdatingId(toyId);
@@ -431,9 +432,25 @@ function AdminPanel({ toys, onToyUpdate }) {
 
   return (
     <div className="admin-panel">
-      <div className="admin-header">
+      <div className="admin-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '20px' }}>
         <h2 className="section-title">Admin Management</h2>
-        <button className="add-toy-btn" onClick={() => setIsAdding(true)}>+ Add New Toy</button>
+        <div className="admin-tabs" style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className={`pill${activeTab === 'inventory' ? ' active' : ''}`} 
+            onClick={() => setActiveTab('inventory')}
+          >
+            Inventory
+          </button>
+          <button 
+            className={`pill${activeTab === 'users' ? ' active' : ''}`} 
+            onClick={() => setActiveTab('users')}
+          >
+            Users
+          </button>
+        </div>
+        {activeTab === 'inventory' && (
+          <button className="add-toy-btn" onClick={() => setIsAdding(true)}>+ Add New Toy</button>
+        )}
       </div>
 
       {(isAdding || editingToy) && (
@@ -449,47 +466,52 @@ function AdminPanel({ toys, onToyUpdate }) {
         </div>
       )}
 
-      <div className="admin-grid">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Toy</th>
-              <th>Price</th>
-              <th>Category</th>
-              <th>Stock Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {toys.map(toy => (
-              <tr key={toy.id}>
-                <td>
-                  <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>{toy.emoji}</span>
-                  {toy.name}
-                </td>
-                <td>${toy.price.toFixed(2)}</td>
-                <td>{toy.category}</td>
-                <td>
-                  <select
-                    className="stock-select"
-                    value={toy.stock_status}
-                    onChange={(e) => handleStockChange(toy.id, e.target.value)}
-                    disabled={updatingId === toy.id}
-                  >
-                    <option value="available">Available</option>
-                    <option value="low">Low Stock</option>
-                    <option value="sold_out">Sold Out</option>
-                  </select>
-                </td>
-                <td>
-                  <button className="edit-btn" onClick={() => setEditingToy(toy)}>Edit</button>
-                  <button className="delete-btn" onClick={() => handleDelete(toy.id)}>Delete</button>
-                </td>
+      {activeTab === 'inventory' ? (
+        <div className="admin-grid">
+          <table className="admin-table">
+            {/* ... existing table head ... */}
+            <thead>
+              <tr>
+                <th>Toy</th>
+                <th>Price</th>
+                <th>Category</th>
+                <th>Stock Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {toys.map(toy => (
+                <tr key={toy.id}>
+                  <td>
+                    <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>{toy.emoji}</span>
+                    {toy.name}
+                  </td>
+                  <td>${toy.price.toFixed(2)}</td>
+                  <td>{toy.category}</td>
+                  <td>
+                    <select
+                      className="stock-select"
+                      value={toy.stock_status}
+                      onChange={(e) => handleStockChange(toy.id, e.target.value)}
+                      disabled={updatingId === toy.id}
+                    >
+                      <option value="available">Available</option>
+                      <option value="low">Low Stock</option>
+                      <option value="sold_out">Sold Out</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button className="edit-btn" onClick={() => setEditingToy(toy)}>Edit</button>
+                    <button className="delete-btn" onClick={() => handleDelete(toy.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <AdminUsersPanel />
+      )}
     </div>
   );
 }
@@ -818,6 +840,85 @@ function AdminInbox() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AdminUsersPanel() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = () => {
+    const token = localStorage.getItem('token');
+    fetch('/api/admin/users', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      setUsers(data);
+      setLoading(false);
+    })
+    .catch(err => console.error(err));
+  };
+
+  const handleResetPassword = (userId) => {
+    if (!confirm('Force this user to change password on next login?')) return;
+    const token = localStorage.getItem('token');
+    fetch(`/api/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.message || 'Password reset flagged.');
+      fetchUsers();
+    })
+    .catch(err => alert('Error: ' + err.message));
+  };
+
+  if (loading) return <div>Loading users...</div>;
+
+  return (
+    <div className="admin-grid">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id}>
+              <td>{u.username}</td>
+              <td>{u.email}</td>
+              <td><span className={`role-badge ${u.role}`}>{u.role}</span></td>
+              <td>
+                {u.must_reset_password ? 
+                  <span style={{ color: '#ff4d4d', fontSize: '0.85rem' }}>⌛ Pending Reset</span> : 
+                  <span style={{ color: '#2ecc71', fontSize: '0.85rem' }}>✓ Active</span>
+                }
+              </td>
+              <td>
+                <button 
+                  className="edit-btn" 
+                  onClick={() => handleResetPassword(u.id)}
+                  style={{ background: '#f39c12' }}
+                >
+                  Reset Password
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

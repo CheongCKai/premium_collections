@@ -12,7 +12,7 @@ const requireAuth = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     // Refresh user from DB to ensure role/existence is current
-    const user = db.prepare("SELECT id, name, email, role FROM users WHERE id = ?").get(decoded.id);
+    const user = db.prepare("SELECT id, username, email, role FROM users WHERE id = ?").get(decoded.id);
     if (!user) return res.status(401).json({ error: "User not found." });
     req.user = user;
     next();
@@ -21,7 +21,7 @@ const requireAuth = (req, res, next) => {
   }
 };
 
-// Admin-only guard (runs requireAuth first)
+// Admin-only guard
 const requireAdmin = (req, res, next) => {
   requireAuth(req, res, () => {
     if (req.user.role !== "admin") {
@@ -31,4 +31,14 @@ const requireAdmin = (req, res, next) => {
   });
 };
 
-module.exports = { requireAuth, requireAdmin };
+// Operator or Admin guard
+const requireOperator = (req, res, next) => {
+  requireAuth(req, res, () => {
+    if (req.user.role !== "admin" && req.user.role !== "operator") {
+      return res.status(403).json({ error: "Operator access required." });
+    }
+    next();
+  });
+};
+
+module.exports = { requireAuth, requireAdmin, requireOperator };

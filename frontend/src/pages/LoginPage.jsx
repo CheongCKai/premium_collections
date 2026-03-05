@@ -7,6 +7,9 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [resetRequired, setResetRequired] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [tempUser, setTempUser] = useState(null);
 
   const update = (field) => (e) => {
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -33,9 +36,45 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      
+      if (data.mustReset) {
+        setTempUser(data.user);
+        setResetRequired(true);
+        localStorage.setItem('token', data.token); // Store token temporarily for password change
+        setForm({ ...form, password: '' });
+        return;
+      }
+
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       onLoginSuccess(data.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update password.');
+      
+      localStorage.setItem('user', JSON.stringify(tempUser));
+      onLoginSuccess(tempUser);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -82,15 +121,45 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
           </div>
 
           <h1 className="auth-title">
-            {tab === 'login' ? 'Welcome back 👋' : 'Create your account 🎉'}
+            {resetRequired ? 'Secure your account 🛡️' : tab === 'login' ? 'Welcome back 👋' : 'Create your account 🎉'}
           </h1>
           <p className="auth-subtitle">
-            {tab === 'login'
+            {resetRequired 
+              ? 'A temporary reset was requested. Please set a new password.'
+              : tab === 'login'
               ? 'Sign in to continue shopping'
               : 'Join thousands of toy collectors'}
           </p>
 
-          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+          {resetRequired ? (
+            <form className="auth-form" onSubmit={handleResetPassword} noValidate>
+              <div className="form-group password-group">
+                <label htmlFor="new-password">New Password</label>
+                <div className="password-input-wrapper">
+                  <input
+                    id="new-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Minimum 6 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button" 
+                    className="password-toggle-btn"
+                    onClick={togglePassword}
+                  >
+                    {showPassword ? '👁️‍🗨️' : '👁️'}
+                  </button>
+                </div>
+              </div>
+              {error && <div className="auth-error">⚠️ {error}</div>}
+              <button className="auth-submit-btn" type="submit" disabled={loading}>
+                {loading ? 'Updating…' : 'Set New Password'}
+              </button>
+            </form>
+          ) : (
+            <form className="auth-form" onSubmit={handleSubmit} noValidate>
             {tab === 'register' && (
               <div className="form-group">
                 <label htmlFor="auth-username">Username</label>
@@ -150,22 +219,26 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
               {loading ? 'Please wait…' : tab === 'login' ? 'Sign In' : 'Create Account'}
             </button>
           </form>
+          )}
 
-          {tab === 'login' && (
+          {!resetRequired && tab === 'login' && (
             <p className="auth-hint">
-              Admin? Use <strong>admin@premium.com</strong> / <strong>admin123</strong>
+              Admin? Use <strong>admin@premium.com</strong> / <strong>admin123</strong><br/>
+              Operator? Use <strong>admin1</strong> / <strong>admin123</strong>
             </p>
           )}
 
-          <p className="auth-switch">
-            {tab === 'login' ? "Don't have an account? " : 'Already have an account? '}
-            <button
-              className="auth-switch-btn"
-              onClick={() => { setTab(tab === 'login' ? 'register' : 'login'); setError(''); }}
-            >
-              {tab === 'login' ? 'Register' : 'Sign in'}
-            </button>
-          </p>
+          {!resetRequired && (
+            <p className="auth-switch">
+              {tab === 'login' ? "Don't have an account? " : 'Already have an account? '}
+              <button
+                className="auth-switch-btn"
+                onClick={() => { setTab(tab === 'login' ? 'register' : 'login'); setError(''); }}
+              >
+                {tab === 'login' ? 'Register' : 'Sign in'}
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>

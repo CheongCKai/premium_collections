@@ -1121,3 +1121,35 @@
   text-transform: uppercase;
   margin-top: 2rem; /* Ensure gap as requested */
 }
+/* ── Role Badges ── */
+.role-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.role-badge.admin {
+  background: #fee2e2;
+  color: #ef4444;
+}
+.role-badge.operator {
+  background: #fef3c7;
+  color: #d97706;
+}
+.role-badge.user {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+/* ── Admin Tabs ── */
+.admin-tabs .pill {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.admin-tabs .pill.active {
+  background: var(--gradient-btn);
+  color: #fff;
+  border-color: transparent;
+}
