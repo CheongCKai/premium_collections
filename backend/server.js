@@ -52,7 +52,7 @@ app.post("/api/auth/register", (req, res) => {
     .run(username, username, email, password_hash);
 
   const user = db
-    .prepare("SELECT id, username, email, role, created_at FROM users WHERE id = ?")
+    .prepare("SELECT id, username, name, email, role, created_at FROM users WHERE id = ?")
     .get(result.lastInsertRowid);
 
   const token = signToken(user);
@@ -279,17 +279,28 @@ app.post("/api/contact", (req, res) => {
 // User: Get own conversation history
 app.get("/api/conversations", requireAuth, (req, res) => {
   const conv = db.prepare("SELECT * FROM conversations WHERE user_id = ?").get(req.user.id);
-  if (!conv) return res.json({ messages: [] });
+  if (!conv) return res.json({ messages: [], unreadCount: 0 });
   
   const messages = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(conv.id);
-  res.json({ conversation: conv, messages });
+  const unreadCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ? AND sender_role != 'user' AND is_read = 0").get(conv.id).count;
+  res.json({ conversation: conv, messages, unreadCount });
+});
+
+// User: Mark own conversation as read
+app.post("/api/conversations/read", requireAuth, (req, res) => {
+  const conv = db.prepare("SELECT id FROM conversations WHERE user_id = ?").get(req.user.id);
+  if (conv) {
+    db.prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_role != 'user' AND is_read = 0").run(conv.id);
+  }
+  res.json({ success: true });
 });
 
 // Admin/Operator: List conversations
 app.get("/api/admin/conversations", requireOperator, (req, res) => {
   let query = `
     SELECT c.*, u.username as user_name, u.email as user_email,
-    (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
+    (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+    (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_role IN ('user', 'guest') AND is_read = 0) as unread_count
     FROM conversations c
     LEFT JOIN users u ON u.id = c.user_id
   `;
@@ -316,6 +327,9 @@ app.get("/api/admin/conversations/:id", requireOperator, (req, res) => {
     return res.status(403).json({ error: "Access denied." });
   }
 
+  // Mark all unread messages from this user/guest as read
+  db.prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_role IN ('user', 'guest') AND is_read = 0").run(req.params.id);
+
   const messages = db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(req.params.id);
   res.json(messages);
 });
@@ -340,6 +354,25 @@ app.post("/api/admin/conversations/:id/reply", requireOperator, (req, res) => {
   db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(req.params.id);
 
   res.status(201).json({ message: "Reply sent" });
+});
+
+// Global: Get unread count for navbar badges
+app.get("/api/unread-counts", requireAuth, (req, res) => {
+  let unreadCount = 0;
+  if (req.user.role === 'admin') {
+    unreadCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE sender_role IN ('user', 'guest') AND is_read = 0").get().count;
+  } else if (req.user.role === 'operator') {
+    const conv = db.prepare("SELECT id FROM conversations WHERE user_id = ?").get(req.user.id);
+    if (conv) {
+      unreadCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ? AND sender_role IN ('user', 'guest') AND is_read = 0").get(conv.id).count;
+    }
+  } else {
+    const conv = db.prepare("SELECT id FROM conversations WHERE user_id = ?").get(req.user.id);
+    if (conv) {
+      unreadCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ? AND sender_role != 'user' AND is_read = 0").get(conv.id).count;
+    }
+  }
+  res.json({ unreadCount });
 });
 
 // ── ADMIN ROUTES (admin only) ───────────────────────────────────────

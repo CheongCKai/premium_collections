@@ -121,6 +121,10 @@ try {
   db.prepare("ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0").run();
 } catch (e) {}
 
+try {
+  db.prepare("ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0").run();
+} catch (e) {}
+
 // ── Seed Admin & Operator Accounts ──────────────────────────────────
 const seedAccounts = () => {
   // Admin

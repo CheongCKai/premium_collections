@@ -23,6 +23,7 @@ function App() {
   const [view, setView] = useState('shop'); // 'shop' | 'admin' | 'history'
   const [isShopDropdownOpen, setIsShopDropdownOpen] = useState(false);
   const [toast, setToast] = useState(null); // { message, type }
+  const [unreadCount, setUnreadCount] = useState(0);
   const dropdownTimeoutRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
@@ -51,6 +52,31 @@ function App() {
       .then((data) => setToys(data))
       .catch((err) => console.error('Fetch error:', err));
   }, []);
+
+  useEffect(() => {
+    let interval;
+    if (currentUser) {
+      const fetchUnreadCount = () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        fetch('/api/unread-counts', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data && typeof data.unreadCount === 'number') {
+            setUnreadCount(data.unreadCount);
+          }
+        })
+        .catch(err => console.error(err));
+      };
+      fetchUnreadCount();
+      interval = setInterval(fetchUnreadCount, 15000);
+    } else {
+      setUnreadCount(0);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [currentUser]);
 
   // ── Cart Persistence & Sync ──
   useEffect(() => {
@@ -271,12 +297,17 @@ function App() {
               <button 
                 className={`nav-link${view === 'shop' || view === 'contact' ? ' active' : ''}`} 
                 onClick={() => setView('shop')}
+                style={{ position: 'relative' }}
               >
                 Shop <span className="chevron">▾</span>
+                {currentUser?.role === 'user' && unreadCount > 0 && <span style={{ position: 'absolute', top: '0', right: '-5px', width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }}></span>}
               </button>
               <div className="dropdown-content">
                 <button className="dropdown-item" onClick={() => { setView('shop'); setIsShopDropdownOpen(false); }}>Products</button>
-                <button className="dropdown-item" onClick={() => { setView('contact'); setIsShopDropdownOpen(false); }}>Contact Us</button>
+                <button className="dropdown-item" onClick={() => { setView('contact'); setIsShopDropdownOpen(false); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  Contact Us
+                  {currentUser?.role === 'user' && unreadCount > 0 && <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px' }}>{unreadCount}</span>}
+                </button>
               </div>
             </div>
             {currentUser && currentUser.role !== 'operator' && (
@@ -286,13 +317,16 @@ function App() {
               <button className={`nav-link${view === 'admin' ? ' active' : ''}`} onClick={() => setView('admin')}>Admin</button>
             )}
             {(currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
-              <button className={`nav-link${view === 'inbox' ? ' active' : ''}`} onClick={() => setView('inbox')}>Inbox</button>
+              <button className={`nav-link${view === 'inbox' ? ' active' : ''}`} onClick={() => setView('inbox')} style={{ position: 'relative' }}>
+                Inbox
+                {unreadCount > 0 && <span style={{ position: 'absolute', top: '-5px', right: '-10px', background: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px' }}>{unreadCount}</span>}
+              </button>
             )}
           </nav>
 
           {currentUser ? (
             <div className="navbar-user">
-              <span className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</span>
+              <span className="user-avatar">{(currentUser.name || currentUser.username || 'U').charAt(0).toUpperCase()}</span>
               <span className="user-name">{currentUser.username || currentUser.name}</span>
               {(currentUser.role === 'admin' || currentUser.role === 'operator') && <span className="admin-badge">{currentUser.role === 'admin' ? 'Admin' : 'Operator'}</span>}
             </div>
@@ -405,11 +439,11 @@ function App() {
         )}
 
         {view === 'contact' && (
-          <ContactUs currentUser={currentUser} />
+          <ContactUs currentUser={currentUser} setUnreadCount={setUnreadCount} />
         )}
 
         {view === 'inbox' && (currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
-          <AdminInbox showToast={showToast} />
+          <AdminInbox showToast={showToast} setUnreadCount={setUnreadCount} />
         )}
       </main>
 
@@ -451,12 +485,7 @@ function App() {
 
 function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
   const [updatingId, setUpdatingId] = useState(null);
-  const [editingToy, setEditingToy] = useState(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [activeTab, setActiveTab] = useState(currentUser?.role === 'admin' ? 'inventory' : 'users');
-  const [pendingStockChanges, setPendingStockChanges] = useState({}); // { toyId: status }
-
-  const hasPending = Object.keys(pendingStockChanges).length > 0;
+  const [confirmDelete, setConfirmDelete] = useState(null); // { id, name }
 
   const handleStockChange = (toyId, newStatus) => {
     // Check if the new status is different from the original status
@@ -509,41 +538,63 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
     setPendingStockChanges({});
   };
 
-  const handleDelete = (toyId) => {
-    if (!confirm('Are you sure you want to delete this toy?')) return;
+  const handleDelete = (toy) => {
+    setConfirmDelete(toy);
+  };
+
+  const proceedDelete = () => {
+    if (!confirmDelete) return;
     const token = localStorage.getItem('token');
-    fetch(`/api/toys/${toyId}`, {
+    fetch(`/api/toys/${confirmDelete.id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     })
-    .then(() => onToyUpdate())
-    .catch(err => console.error(err));
+    .then(async res => {
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete toy');
+      }
+      showToast('Toy deleted successfully');
+      onToyUpdate();
+      setConfirmDelete(null);
+    })
+    .catch(err => {
+      console.error(err);
+      showToast(err.message, 'error');
+    });
   };
 
-  const handleSaveToy = (toyData) => {
+  const handleSaveToy = async (toyData) => {
     const token = localStorage.getItem('token');
     const method = toyData.id ? 'PUT' : 'POST';
     const url = toyData.id ? `/api/toys/${toyData.id}` : '/api/toys';
 
-    fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(toyData)
-    })
-    .then(res => res.json())
-    .then(() => {
-      onToyUpdate();
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(toyData)
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save toy');
+
+      showToast(`Toy ${toyData.id ? 'updated' : 'added'} successfully`);
+      await onToyUpdate();
       setEditingToy(null);
       setIsAdding(false);
-    })
-    .catch(err => console.error(err));
+    } catch (err) {
+      console.error(err);
+      showToast(err.message, 'error');
+    }
   };
 
   return (
     <div className="admin-panel">
+      {/* ... existing header ... */}
       <div className="admin-header" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <h2 className="section-title">Admin Management</h2>
@@ -607,6 +658,19 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
         </div>
       )}
 
+      {confirmDelete && (
+        <div className="confirm-modal-overlay">
+          <div className="confirm-modal-content">
+            <h3>Delete Toy?</h3>
+            <p>Are you sure you want to delete <strong>{confirmDelete.name}</strong>? This action cannot be undone.</p>
+            <div className="confirm-modal-actions">
+              <button className="confirm-modal-btn cancel" onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button className="confirm-modal-btn confirm" onClick={proceedDelete}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'inventory' ? (
         <div className="admin-grid">
           <table className="admin-table">
@@ -643,7 +707,7 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
                   </td>
                   <td>
                     <button className="edit-btn" onClick={() => setEditingToy(toy)}>Edit</button>
-                    <button className="delete-btn" onClick={() => handleDelete(toy.id)}>Delete</button>
+                    <button className="delete-btn" onClick={() => handleDelete(toy)}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -660,47 +724,71 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
 function ToyForm({ toy, onSave, onCancel }) {
   const [form, setForm] = useState(toy || {
     name: '',
-    price: 0,
+    price: '', // Start as empty string for better validation
     category: 'Action Figures',
     emoji: '🎁',
     badge: '',
     description: ''
   });
+  const [errors, setErrors] = useState({});
+
+  const validate = () => {
+    const newErrors = {};
+    if (!form.name.trim()) newErrors.name = 'Name is required';
+    if (form.price === '' || isNaN(parseFloat(form.price)) || parseFloat(form.price) < 0) {
+      newErrors.price = 'Valid price is required';
+    }
+    if (!form.category) newErrors.category = 'Category is required';
+    if (!form.emoji.trim()) newErrors.emoji = 'Emoji is required';
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm(f => ({ ...f, [name]: name === 'price' ? parseFloat(value) : value }));
+    setForm(f => ({ ...f, [name]: value }));
+    if (errors[name]) setErrors(prev => {
+      const { [name]: removed, ...rest } = prev;
+      return rest;
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(form);
+    if (validate()) {
+      onSave({ ...form, price: parseFloat(form.price) });
+    }
   };
 
   return (
     <form className="toy-form" onSubmit={handleSubmit}>
-      <div className="form-group">
+      <div className={`form-group ${errors.name ? 'error' : ''}`}>
         <label>Name</label>
         <input name="name" value={form.name} onChange={handleChange} required />
+        {errors.name && <span className="error-text">⚠️ {errors.name}</span>}
       </div>
       <div className="form-row">
-        <div className="form-group">
+        <div className={`form-group ${errors.price ? 'error' : ''}`}>
           <label>Price ($)</label>
           <input name="price" type="number" step="0.01" value={form.price} onChange={handleChange} required />
+          {errors.price && <span className="error-text">⚠️ {errors.price}</span>}
         </div>
-        <div className="form-group">
+        <div className={`form-group ${errors.category ? 'error' : ''}`}>
           <label>Category</label>
           <select name="category" value={form.category} onChange={handleChange}>
             {['Action Figures', 'Vehicles', 'Plush', 'Building Sets', 'Puzzles'].map(cat => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
+          {errors.category && <span className="error-text">⚠️ {errors.category}</span>}
         </div>
       </div>
       <div className="form-row">
-        <div className="form-group">
+        <div className={`form-group ${errors.emoji ? 'error' : ''}`}>
           <label>Emoji Icon</label>
           <input name="emoji" value={form.emoji} onChange={handleChange} required />
+          {errors.emoji && <span className="error-text">⚠️ {errors.emoji}</span>}
         </div>
         <div className="form-group">
           <label>Badge (Optional)</label>
@@ -773,11 +861,13 @@ function PurchaseHistory() {
   );
 }
 
-function ContactUs({ currentUser }) {
+function ContactUs({ currentUser, setUnreadCount }) {
   const [messages, setMessages] = useState([]);
   const [email, setEmail] = useState('');
   const [content, setContent] = useState('');
   const [status, setStatus] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (currentUser) {
@@ -786,9 +876,17 @@ function ContactUs({ currentUser }) {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.json())
-      .then(data => setMessages(data.messages || []));
+      .then(data => {
+        setMessages(data.messages || []);
+        if (data.unreadCount > 0) {
+          fetch('/api/conversations/read', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).then(() => { if (setUnreadCount) setUnreadCount(0); });
+        }
+      });
     }
-  }, [currentUser]);
+  }, [currentUser, setUnreadCount]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -813,6 +911,19 @@ function ContactUs({ currentUser }) {
     .catch(err => setStatus('Error: ' + err.message));
   };
 
+  const handleEmojiClick = (emoji) => {
+    setContent(prev => prev + emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Mock file upload by just appending the file name to the message
+      setContent(prev => prev + ` [Attached File: ${file.name}]`);
+    }
+  };
+
   return (
     <div className="contact-page">
       <div className="contact-hero">
@@ -826,70 +937,87 @@ function ContactUs({ currentUser }) {
           </div>
         </div>
 
-        <div className="contact-form-side">
-          {currentUser && messages.length > 0 && (
-            <div className="chat-window">
-              {messages.map((m, i) => (
-                <div key={i} className={`chat-bubble-wrapper ${m.sender_role}`}>
-                  <div className="bubble-header">
-                    <span className="bubble-name">{m.sender_role === 'admin' ? 'Support Agent' : (currentUser?.username || 'User')}</span>
-                    <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <div className="contact-form-side" style={{ height: currentUser ? '600px' : 'auto' }}>
+          {currentUser ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
+              <div style={{ padding: '1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: '#1e293b' }}>Support Chat</h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>We typically reply within a few hours.</p>
+              </div>
+              
+              <div className="chat-window" style={{ flex: 1, padding: '1.5rem', margin: 0, maxHeight: 'none' }}>
+                {messages.length === 0 ? (
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💬</div>
+                    <p>No messages yet. Start a conversation!</p>
                   </div>
-                  <div className={`chat-bubble ${m.sender_role}`}>
-                    <div className="bubble-content">{m.content}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ) : (
+                  messages.map((m, i) => (
+                    <div key={i} className={`chat-bubble-wrapper ${m.sender_role === 'user' ? 'user' : 'admin'}`}>
+                      <div className="bubble-header">
+                        <span className="bubble-name">{m.sender_role === 'admin' || m.sender_role === 'operator' ? 'Support Agent' : 'You'}</span>
+                        <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className={`chat-bubble ${m.sender_role === 'user' ? 'user' : 'admin'}`}>
+                        <div className="bubble-content">{m.content}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
-          <form className="contact-form" onSubmit={handleSubmit}>
-            {!currentUser ? (
-              <>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>First Name</label>
-                    <input type="text" placeholder="First Name" required />
-                  </div>
-                  <div className="form-group">
-                    <label>Last Name</label>
-                    <input type="text" placeholder="Last Name" required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>What's your email?</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" required />
-                </div>
-                <div className="form-group">
-                  <label>Your questions...</label>
-                  <textarea value={content} onChange={e => setContent(e.target.value)} rows="5" placeholder="How can we help you?" required />
-                </div>
-                <button type="submit" className="save-btn full-width">SEND MESSAGE</button>
-              </>
-            ) : (
-              // Logged in user: Chat style input if it feels like a conversation
-              <div className="reply-form" style={{ padding: '0', border: 'none' }}>
-                <div className="reply-input-wrapper">
-                  <input value={content} onChange={e => setContent(e.target.value)} placeholder="Say something..." required />
+              <form className="reply-form" onSubmit={handleSubmit} style={{ borderTop: '1px solid #e2e8f0', padding: '1rem 1.5rem' }}>
+                <div className="reply-input-wrapper" style={{ position: 'relative' }}>
+                  <input value={content} onChange={e => setContent(e.target.value)} placeholder="Type a message..." required />
                   <div className="reply-icons">
-                    <span className="reply-icon" onClick={() => showToast('Attachment coming soon!', 'info')}>📎</span>
-                    <span className="reply-icon" onClick={() => showToast('Emoji picker coming soon!', 'info')}>😊</span>
+                    <span className="reply-icon" onClick={() => fileInputRef.current.click()} title="Attach File">📎</span>
+                    <span className="reply-icon" onClick={() => setShowEmojiPicker(!showEmojiPicker)} title="Emoji">😊</span>
                   </div>
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
+                  {showEmojiPicker && (
+                    <div className="emoji-picker" style={{ position: 'absolute', bottom: '100%', right: '0', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '5px', zIndex: 10, marginBottom: '10px' }}>
+                      {['😀','😍','🥳','👍','🙏','💡'].map(emoji => (
+                        <span key={emoji} style={{ cursor: 'pointer', fontSize: '1.2rem' }} onClick={() => handleEmojiClick(emoji)}>{emoji}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button type="submit" className="send-btn-circle" aria-label="Send">
                   <span>➤</span>
                 </button>
+              </form>
+            </div>
+          ) : (
+            <form className="contact-form" onSubmit={handleSubmit}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>First Name</label>
+                  <input type="text" placeholder="First Name" required />
+                </div>
+                <div className="form-group">
+                  <label>Last Name</label>
+                  <input type="text" placeholder="Last Name" required />
+                </div>
               </div>
-            )}
-            {status && <p className="status-msg">{status}</p>}
-          </form>
+              <div className="form-group">
+                <label>What's your email?</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" required />
+              </div>
+              <div className="form-group">
+                <label>Your questions...</label>
+                <textarea value={content} onChange={e => setContent(e.target.value)} rows="5" placeholder="How can we help you?" required />
+              </div>
+              <button type="submit" className="save-btn full-width">SEND MESSAGE</button>
+              {status && <p className="status-msg" style={{ color: status.startsWith('Error') ? '#ef4444' : '#10b981', textAlign: 'center', marginTop: '1rem' }}>{status}</p>}
+            </form>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function AdminInbox({ showToast }) {
+function AdminInbox({ showToast, setUnreadCount }) {
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -912,7 +1040,13 @@ function AdminInbox({ showToast }) {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
-    .then(setMessages);
+    .then(data => {
+      setMessages(data);
+      if (conv.unread_count > 0) {
+        if (setUnreadCount) setUnreadCount(prev => Math.max(0, prev - conv.unread_count));
+        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
+      }
+    });
   };
 
   const handleReply = (e) => {
@@ -936,25 +1070,53 @@ function AdminInbox({ showToast }) {
 
   return (
     <div className="inbox-page">
-      <h2 className="section-title">{currentUser.role === 'admin' ? 'Admin Inbox' : 'Chat with Admin'}</h2>
+      <h2 className="section-title">Message <span className="gradient-text">Center</span></h2>
       <div className="inbox-container">
         <div className="conv-list">
-          {conversations.map(c => (
-            <div key={c.id} className={`conv-item ${selectedConv?.id === c.id ? 'active' : ''}`} onClick={() => handleSelect(c)}>
-              <div className="conv-user">{c.user_name || c.guest_email || 'Guest'}</div>
-              <div className="conv-last">{c.last_message || 'No messages'}</div>
-              <div className="conv-time">{new Date(c.updated_at).toLocaleString()}</div>
+          <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b' }}>Conversations</h3>
+            <p style={{ fontSize: '0.8rem', color: '#64748b' }}>{conversations.length} active threads</p>
+          </div>
+          {conversations.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+              No messages yet
             </div>
-          ))}
+          ) : (
+            conversations.map(c => (
+              <div key={c.id} className={`conv-item ${selectedConv?.id === c.id ? 'active' : ''}`} onClick={() => handleSelect(c)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div className="conv-user" style={{ fontWeight: c.unread_count > 0 ? 'bold' : 'normal' }}>
+                    {c.user_name || c.guest_email || 'Guest'}
+                    {c.unread_count > 0 && <span style={{ background: '#ef4444', color: 'white', fontSize: '0.65rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '10px', marginLeft: '6px' }}>{c.unread_count}</span>}
+                  </div>
+                  <div className="conv-time">{new Date(c.updated_at).toLocaleDateString([], { day: '2-digit', month: 'short' })}</div>
+                </div>
+                <div className="conv-last" style={{ fontWeight: c.unread_count > 0 ? 'bold' : 'normal', color: c.unread_count > 0 ? '#1e293b' : '#64748b' }}>{c.last_message || 'No messages'}</div>
+              </div>
+            ))
+          )}
         </div>
         <div className="chat-area">
           {selectedConv ? (
             <>
+              <div className="chat-header">
+                <div className="chat-header-info">
+                  <h3>{selectedConv.user_name || selectedConv.guest_email || 'Guest'}</h3>
+                  <p>{selectedConv.user_email || selectedConv.guest_email || 'Active Conversation'}</p>
+                </div>
+                <div className="chat-header-actions">
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', padding: '4px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#64748b' }}>
+                    ID: #{selectedConv.id}
+                  </span>
+                </div>
+              </div>
               <div className="chat-window">
                 {messages.map((m, i) => (
                   <div key={i} className={`chat-bubble-wrapper ${m.sender_role}`}>
                     <div className="bubble-header">
-                      <span className="bubble-name">{m.sender_role === 'admin' ? 'You' : (selectedConv.user_name || 'Guest')}</span>
+                      <span className="bubble-name">
+                        {m.sender_role === 'admin' ? 'You (Admin)' : m.sender_role === 'operator' ? 'You (Operator)' : (selectedConv.user_name || 'Guest')}
+                      </span>
                       <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div className={`chat-bubble ${m.sender_role}`}>
@@ -965,13 +1127,10 @@ function AdminInbox({ showToast }) {
               </div>
               <form className="reply-form" onSubmit={handleReply}>
                 <div className="reply-input-wrapper">
-                  <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Say something..." required />
+                  <input value={reply} onChange={e => setReply(e.target.value)} placeholder="Type a message..." required />
                   <div className="reply-icons">
-                    <span className="reply-icon" title="Attach" onClick={() => showToast('Attachment feature coming soon!', 'info')}>📎</span>
-                    <span className="reply-icon" title="Image" onClick={() => showToast('Image upload coming soon!', 'info')}>🖼️</span>
-                    <span className="reply-icon" title="Emoji" onClick={() => showToast('Emoji picker coming soon!', 'info')}>😊</span>
-                    <span className="reply-icon" title="Voice" onClick={() => showToast('Voice message coming soon!', 'info')}>🎤</span>
-                    <span className="reply-icon" title="Camera" onClick={() => showToast('Camera access coming soon!', 'info')}>📷</span>
+                    <span className="reply-icon" title="Emoji">😊</span>
+                    <span className="reply-icon" title="Attach">📎</span>
                   </div>
                 </div>
                 <button type="submit" className="send-btn-circle" aria-label="Send">
@@ -980,7 +1139,10 @@ function AdminInbox({ showToast }) {
               </form>
             </>
           ) : (
-            <div className="empty-chat">Select a conversation to view.</div>
+            <div className="empty-chat">
+              <h3>In-box Empty</h3>
+              <p>Select a message from the list on the left to start responding.</p>
+            </div>
           )}
         </div>
       </div>
