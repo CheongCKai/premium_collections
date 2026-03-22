@@ -486,7 +486,7 @@ function App() {
 function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
   const [updatingId, setUpdatingId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { id, name }
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState(currentUser?.role === 'operator' ? 'users' : 'inventory');
   const [pendingStockChanges, setPendingStockChanges] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const [editingToy, setEditingToy] = useState(null);
@@ -1235,23 +1235,37 @@ function AdminUsersPanel({ showToast }) {
   }, []);
 
   const fetchUsers = () => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch('/api/admin/users', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-    .then(res => res.json())
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch users');
+      return data;
+    })
     .then(data => {
-      setUsers(data);
+      if (Array.isArray(data)) {
+        setUsers(data);
+      } else {
+        setUsers([]);
+        showToast('Invalid data received', 'error');
+      }
       setLoading(false);
     })
-    .catch(err => console.error(err));
+    .catch(err => {
+      console.error(err);
+      setUsers([]);
+      setLoading(false);
+      if (showToast) showToast('Error: ' + err.message, 'error');
+    });
   };
 
   const handleResetPassword = (userId) => {
     const isWarning = confirm("⚠️ WARNING: This will force the user to reset their password. They will NOT be able to access the shop until they set a new password. \n\nAre you sure you want to proceed?");
     if (!isWarning) return;
     
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/admin/users/${userId}/reset-password`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -1272,7 +1286,7 @@ function AdminUsersPanel({ showToast }) {
       
     if (!confirm(warningMsg)) return;
     
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/admin/users/${userId}/${action}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
