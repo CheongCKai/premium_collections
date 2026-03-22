@@ -969,17 +969,21 @@ function ContactUs({ currentUser, setUnreadCount }) {
                     <p>No messages yet. Start a conversation!</p>
                   </div>
                 ) : (
-                  messages.map((m, i) => (
-                    <div key={i} className={`chat-bubble-wrapper ${m.sender_role === 'user' ? 'user' : 'admin'}`}>
+                  messages.map((m, i) => {
+                    const isOwn = m.sender_role === 'user';
+                    const msgClass = isOwn ? 'own-message' : 'other-message';
+                    const roleClass = m.sender_role === 'user' ? 'user' : 'admin';
+                    return (
+                    <div key={i} className={`chat-bubble-wrapper ${msgClass} ${roleClass}`}>
                       <div className="bubble-header">
-                        <span className="bubble-name">{m.sender_role === 'admin' || m.sender_role === 'operator' ? 'Support Agent' : 'You'}</span>
+                        <span className="bubble-name">{isOwn ? 'You' : 'Support Agent'}</span>
                         <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      <div className={`chat-bubble ${m.sender_role === 'user' ? 'user' : 'admin'}`}>
+                      <div className={`chat-bubble ${msgClass} ${roleClass}`}>
                         <div className="bubble-content">{m.content}</div>
                       </div>
                     </div>
-                  ))
+                  )})
                 )}
               </div>
 
@@ -1172,11 +1176,15 @@ function AdminInbox({ showToast, setUnreadCount }) {
                 </div>
               </div>
               <div className="chat-window">
-                {messages.map((m, i) => (
-                  <div key={i} className={`chat-bubble-wrapper ${m.sender_role}`}>
+                {messages.map((m, i) => {
+                  const isOwn = m.sender_role === 'admin' || m.sender_role === 'operator';
+                  const msgClass = isOwn ? 'own-message' : 'other-message';
+                  const roleClass = m.sender_role;
+                  return (
+                  <div key={i} className={`chat-bubble-wrapper ${msgClass} ${roleClass}`}>
                     <div className="bubble-header">
                       <span className="bubble-name">
-                        {m.sender_role === 'admin' ? 'You (Admin)' : m.sender_role === 'operator' ? 'You (Operator)' : (selectedConv.user_name || 'Guest')}
+                        {isOwn ? `You (${m.sender_role === 'admin' ? 'Admin' : 'Operator'})` : (selectedConv.user_name || 'Guest')}
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -1187,11 +1195,11 @@ function AdminInbox({ showToast, setUnreadCount }) {
                         )}
                       </div>
                     </div>
-                    <div className={`chat-bubble ${m.sender_role}`}>
+                    <div className={`chat-bubble ${msgClass} ${roleClass}`}>
                       <div className="bubble-content">{m.content}</div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
               <form className="reply-form" onSubmit={handleReply}>
                 <div className="reply-input-wrapper">

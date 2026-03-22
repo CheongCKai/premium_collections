@@ -937,11 +937,11 @@
   max-width: 85%;
 }
 
-.chat-bubble-wrapper.user, .chat-bubble-wrapper.guest {
+.chat-bubble-wrapper.own-message {
   align-self: flex-end;
 }
 
-.chat-bubble-wrapper.admin {
+.chat-bubble-wrapper.other-message {
   align-self: flex-start;
 }
 
@@ -953,7 +953,7 @@
   padding: 0 0.5rem;
 }
 
-.chat-bubble-wrapper.user .bubble-header, .chat-bubble-wrapper.guest .bubble-header {
+.chat-bubble-wrapper.own-message .bubble-header {
   flex-direction: row-reverse;
 }
 
@@ -978,18 +978,25 @@
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
 }
 
-.chat-bubble.user, .chat-bubble.guest {
-  background: #5a7fff; /* Modern blue */
-  background: linear-gradient(135deg, #5a7fff 0%, #4768ff 100%);
-  color: #fff;
+.chat-bubble.own-message {
+  background: #dcf8c6; /* Light green */
+  color: #1e293b;
   border-top-right-radius: 4px;
 }
 
-.chat-bubble.admin {
+.chat-bubble.other-message {
+  border-top-left-radius: 4px;
+}
+
+.chat-bubble.other-message.user, .chat-bubble.other-message.guest {
+  background: linear-gradient(135deg, #5a7fff 0%, #4768ff 100%);
+  color: #fff;
+}
+
+.chat-bubble.other-message.admin, .chat-bubble.other-message.operator {
   background: #fff;
   color: #1e293b;
   border: 1px solid #e2e8f0;
-  border-top-left-radius: 4px;
 }
 
 /* ── Admin Inbox Redesign ── */
