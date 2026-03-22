@@ -40,13 +40,13 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
       if (data.mustReset) {
         setTempUser(data.user);
         setResetRequired(true);
-        localStorage.setItem('token', data.token); // Store token temporarily for password change
+        sessionStorage.setItem('token', data.token); // Store token temporarily for password change
         setForm({ ...form, password: '' });
         return;
       }
 
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      sessionStorage.setItem('token', data.token);
+      sessionStorage.setItem('user', JSON.stringify(data.user));
       onLoginSuccess(data.user);
     } catch (err) {
       setError(err.message);
@@ -61,7 +61,7 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: { 
@@ -73,7 +73,7 @@ export default function LoginPage({ onLoginSuccess, onClose }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update password.');
       
-      localStorage.setItem('user', JSON.stringify(tempUser));
+      sessionStorage.setItem('user', JSON.stringify(tempUser));
       onLoginSuccess(tempUser);
     } catch (err) {
       setError(err.message);

@@ -356,6 +356,33 @@ app.post("/api/admin/conversations/:id/reply", requireOperator, (req, res) => {
   res.status(201).json({ message: "Reply sent" });
 });
 
+// Admin/Operator: Delete a conversation
+app.delete("/api/admin/conversations/:id", requireOperator, (req, res) => {
+  const conv = db.prepare("SELECT * FROM conversations WHERE id = ?").get(req.params.id);
+  if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+  if (req.user.role === 'operator' && conv.user_id !== req.user.id) {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  db.prepare("DELETE FROM conversations WHERE id = ?").run(req.params.id);
+  res.json({ message: "Conversation deleted successfully" });
+});
+
+// Admin/Operator: Delete a specific message
+app.delete("/api/admin/messages/:id", requireOperator, (req, res) => {
+  const message = db.prepare("SELECT * FROM messages WHERE id = ?").get(req.params.id);
+  if (!message) return res.status(404).json({ error: "Message not found" });
+
+  const conv = db.prepare("SELECT * FROM conversations WHERE id = ?").get(message.conversation_id);
+  if (req.user.role === 'operator' && conv && conv.user_id !== req.user.id) {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  db.prepare("DELETE FROM messages WHERE id = ?").run(req.params.id);
+  res.json({ message: "Message deleted successfully" });
+});
+
 // Global: Get unread count for navbar badges
 app.get("/api/unread-counts", requireAuth, (req, res) => {
   let unreadCount = 0;

@@ -9,7 +9,7 @@ const CATEGORIES = ['All', 'Action Figures', 'Vehicles', 'Plush', 'Building Sets
 function App() {
   // ── Auth State ──
   const [currentUser, setCurrentUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
+    try { return JSON.parse(sessionStorage.getItem('user')); } catch { return null; }
   });
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
@@ -57,7 +57,7 @@ function App() {
     let interval;
     if (currentUser) {
       const fetchUnreadCount = () => {
-        const token = localStorage.getItem('token');
+        const token = sessionStorage.getItem('token');
         if (!token) return;
         fetch('/api/unread-counts', {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -81,7 +81,7 @@ function App() {
   // ── Cart Persistence & Sync ──
   useEffect(() => {
     if (currentUser) {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       fetch('/api/cart', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -112,7 +112,7 @@ function App() {
 
   // ── Auth Handlers ──
   const handleLoginSuccess = (user) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const guestCart = JSON.parse(localStorage.getItem('guest_cart') || '[]');
     
     if (guestCart.length > 0) {
@@ -144,8 +144,8 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     setCurrentUser(null);
     setCartItems([]);
     setCartOpen(false);
@@ -169,7 +169,7 @@ function App() {
       return;
     }
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch('/api/cart/items', {
       method: 'POST',
       headers: {
@@ -210,7 +210,7 @@ function App() {
     const item = cartItems.find(i => i.toy.id === toyId);
     if (!item) return;
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (newQty <= 0) {
       handleRemove(toyId);
     } else {
@@ -238,7 +238,7 @@ function App() {
     const item = cartItems.find(i => i.toy.id === toyId);
     if (!item) return;
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/cart/items/${item.cartItemId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -255,7 +255,7 @@ function App() {
       setCartOpen(false);
       setIsAuthOpen(true);
     } else {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       fetch('/api/orders', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -486,6 +486,11 @@ function App() {
 function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
   const [updatingId, setUpdatingId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { id, name }
+  const [activeTab, setActiveTab] = useState('inventory');
+  const [pendingStockChanges, setPendingStockChanges] = useState({});
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingToy, setEditingToy] = useState(null);
+  const hasPending = Object.keys(pendingStockChanges).length > 0;
 
   const handleStockChange = (toyId, newStatus) => {
     // Check if the new status is different from the original status
@@ -503,7 +508,7 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
 
   const handleBulkSave = async () => {
     setUpdatingId('bulk');
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     
     try {
       const results = await Promise.all(Object.entries(pendingStockChanges).map(async ([id, status]) => {
@@ -544,7 +549,7 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
 
   const proceedDelete = () => {
     if (!confirmDelete) return;
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/toys/${confirmDelete.id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -565,7 +570,7 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
   };
 
   const handleSaveToy = async (toyData) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const method = toyData.id ? 'PUT' : 'POST';
     const url = toyData.id ? `/api/toys/${toyData.id}` : '/api/toys';
 
@@ -812,13 +817,18 @@ function PurchaseHistory() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch('/api/orders', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
     .then(data => {
-      setOrders(data);
+      if (Array.isArray(data)) {
+        setOrders(data);
+      } else {
+        setOrders([]);
+        console.error('History fetch error:', data);
+      }
       setLoading(false);
     })
     .catch(err => {
@@ -870,27 +880,34 @@ function ContactUs({ currentUser, setUnreadCount }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    let interval;
     if (currentUser) {
-      const token = localStorage.getItem('token');
-      fetch('/api/conversations', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        setMessages(data.messages || []);
-        if (data.unreadCount > 0) {
-          fetch('/api/conversations/read', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-          }).then(() => { if (setUnreadCount) setUnreadCount(0); });
-        }
-      });
+      const fetchMsgs = () => {
+        const token = sessionStorage.getItem('token');
+        fetch('/api/conversations', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+          setMessages(data.messages || []);
+          if (data.unreadCount > 0) {
+            fetch('/api/conversations/read', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+            }).then(() => { if (setUnreadCount) setUnreadCount(0); });
+          }
+        });
+      };
+      
+      fetchMsgs();
+      interval = setInterval(fetchMsgs, 3000); // Poll every 3 seconds
     }
+    return () => { if (interval) clearInterval(interval); };
   }, [currentUser, setUnreadCount]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch('/api/contact', {
       method: 'POST',
       headers: { 
@@ -1022,20 +1039,26 @@ function AdminInbox({ showToast, setUnreadCount }) {
   const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState('');
-  const [currentUser] = useState(() => JSON.parse(localStorage.getItem('user')));
+  const [currentUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('user')); } catch { return null; }
+  });
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    fetchConversations();
+  }, []);
+
+  const fetchConversations = () => {
+    const token = sessionStorage.getItem('token');
     fetch('/api/admin/conversations', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
     .then(setConversations);
-  }, []);
+  };
 
   const handleSelect = (conv) => {
     setSelectedConv(conv);
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/admin/conversations/${conv.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
@@ -1051,7 +1074,7 @@ function AdminInbox({ showToast, setUnreadCount }) {
 
   const handleReply = (e) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     fetch(`/api/admin/conversations/${selectedConv.id}/reply`, {
       method: 'POST',
       headers: { 
@@ -1064,6 +1087,38 @@ function AdminInbox({ showToast, setUnreadCount }) {
       if (!res.ok) throw new Error('Failed to send reply');
       setMessages(prev => [...prev, { content: reply, sender_role: currentUser.role === 'admin' ? 'admin' : 'operator', created_at: new Date().toISOString() }]);
       setReply('');
+    })
+    .catch(err => showToast(err.message, 'error'));
+  };
+
+  const handleDeleteMessage = (msgId) => {
+    if (!confirm('Delete this message for everyone?')) return;
+    const token = sessionStorage.getItem('token');
+    fetch(`/api/admin/messages/${msgId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to delete message');
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      showToast('Message deleted');
+    })
+    .catch(err => showToast(err.message, 'error'));
+  };
+
+  const handleDeleteConversation = () => {
+    if (!confirm('Delete this entire conversation for everyone?')) return;
+    const token = sessionStorage.getItem('token');
+    fetch(`/api/admin/conversations/${selectedConv.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to delete conversation');
+      setSelectedConv(null);
+      setMessages([]);
+      fetchConversations();
+      showToast('Conversation deleted');
     })
     .catch(err => showToast(err.message, 'error'));
   };
@@ -1086,10 +1141,13 @@ function AdminInbox({ showToast, setUnreadCount }) {
               <div key={c.id} className={`conv-item ${selectedConv?.id === c.id ? 'active' : ''}`} onClick={() => handleSelect(c)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <div className="conv-user" style={{ fontWeight: c.unread_count > 0 ? 'bold' : 'normal' }}>
-                    {c.user_name || c.guest_email || 'Guest'}
+                    {c.user_name || 'Guest'}
                     {c.unread_count > 0 && <span style={{ background: '#ef4444', color: 'white', fontSize: '0.65rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '10px', marginLeft: '6px' }}>{c.unread_count}</span>}
                   </div>
                   <div className="conv-time">{new Date(c.updated_at).toLocaleDateString([], { day: '2-digit', month: 'short' })}</div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '4px' }}>
+                  {c.user_email || c.guest_email || 'No email provided'}
                 </div>
                 <div className="conv-last" style={{ fontWeight: c.unread_count > 0 ? 'bold' : 'normal', color: c.unread_count > 0 ? '#1e293b' : '#64748b' }}>{c.last_message || 'No messages'}</div>
               </div>
@@ -1101,13 +1159,16 @@ function AdminInbox({ showToast, setUnreadCount }) {
             <>
               <div className="chat-header">
                 <div className="chat-header-info">
-                  <h3>{selectedConv.user_name || selectedConv.guest_email || 'Guest'}</h3>
+                  <h3>{selectedConv.user_name || 'Guest'}</h3>
                   <p>{selectedConv.user_email || selectedConv.guest_email || 'Active Conversation'}</p>
                 </div>
-                <div className="chat-header-actions">
+                <div className="chat-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '0.7rem', fontWeight: '800', padding: '4px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#64748b' }}>
                     ID: #{selectedConv.id}
                   </span>
+                  <button onClick={handleDeleteConversation} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.2rem' }} title="Delete Conversation">
+                    🗑️
+                  </button>
                 </div>
               </div>
               <div className="chat-window">
@@ -1117,7 +1178,14 @@ function AdminInbox({ showToast, setUnreadCount }) {
                       <span className="bubble-name">
                         {m.sender_role === 'admin' ? 'You (Admin)' : m.sender_role === 'operator' ? 'You (Operator)' : (selectedConv.user_name || 'Guest')}
                       </span>
-                      <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="bubble-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {m.id && (
+                          <button onClick={() => handleDeleteMessage(m.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', opacity: 0.7 }} title="Delete Message">
+                            🗑️
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className={`chat-bubble ${m.sender_role}`}>
                       <div className="bubble-content">{m.content}</div>
