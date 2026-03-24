@@ -948,13 +948,7 @@ function ContactUs({ currentUser, setUnreadCount }) {
       </div>
       
       <div className="contact-grid-container">
-        <div className="contact-illustration-side">
-          <div className="contact-icon-wrapper">
-            <span className="contact-large-icon">✉️</span>
-          </div>
-        </div>
-
-        <div className="contact-form-side" style={{ height: currentUser ? '600px' : 'auto' }}>
+        <div className="contact-form-side" style={{ height: currentUser ? '600px' : 'auto', gridColumn: '1 / -1', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
           {currentUser ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
               <div style={{ padding: '1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>

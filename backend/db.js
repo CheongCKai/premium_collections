@@ -141,10 +141,22 @@ const seedAccounts = () => {
   const operatorExists = db.prepare("SELECT id FROM users WHERE username = ?").get("admin1");
   if (!operatorExists) {
     const hash = bcrypt.hashSync("admin123", 10);
-    db.prepare(
+    const result = db.prepare(
       "INSERT INTO users (username, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)"
     ).run("admin1", "Operator User", "operator@premium.com", hash, "operator");
     console.log("✅ Operator account seeded: admin1 (username) / admin123");
+    
+    // Seed default conversation with admin
+    const admin1Id = result.lastInsertRowid;
+    db.prepare("INSERT INTO conversations (user_id) VALUES (?)").run(admin1Id);
+    console.log("✅ Default conversation seeded for admin1");
+  } else {
+    // Ensure conversation exists even if account was already seeded
+    const conv = db.prepare("SELECT id FROM conversations WHERE user_id = ?").get(operatorExists.id);
+    if (!conv) {
+      db.prepare("INSERT INTO conversations (user_id) VALUES (?)").run(operatorExists.id);
+      console.log("✅ Default conversation initialized for existing admin1");
+    }
   }
 };
 

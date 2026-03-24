@@ -825,43 +825,13 @@
 
 .contact-grid-container {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  align-items: center;
+  grid-template-columns: 1fr;
+  max-width: 900px;
+  margin: 0 auto;
   background: #fff;
   padding: 4rem;
   border-radius: 40px;
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.05);
-}
-
-.contact-illustration-side {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.contact-icon-wrapper {
-  width: 280px;
-  height: 280px;
-  background: #f8fafc;
-  border-radius: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 
-    0 20px 40px rgba(109, 40, 217, 0.05),
-    inset 0 0 0 2px #fff;
-  border: 1px solid #e2e8f0;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.contact-icon-wrapper:hover {
-  transform: translateY(-5px) rotate(-2deg);
-}
-
-.contact-large-icon {
-  font-size: 8rem;
-  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.1));
 }
 
 .contact-form-side {

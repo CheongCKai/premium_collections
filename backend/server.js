@@ -271,6 +271,13 @@ app.post("/api/contact", (req, res) => {
   db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
     .run(conv.id, finalUserId ? 'user' : 'guest', content);
   
+  // Auto-reply for first message from logged-in user
+  const messageCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?").get(conv.id).count;
+  if (messageCount === 1 && finalUserId) {
+    db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
+      .run(conv.id, 'admin', 'message is received and admin will get back to you as soon as possible.');
+  }
+  
   db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conv.id);
 
   res.status(201).json({ message: "Message sent", conversationId: conv.id });
@@ -350,6 +357,13 @@ app.post("/api/admin/conversations/:id/reply", requireOperator, (req, res) => {
 
   db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
     .run(req.params.id, senderRole, content);
+  
+  // Auto-reply for first message from an operator (e.g. admin1)
+  const messageCount = db.prepare("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?").get(req.params.id).count;
+  if (messageCount === 1 && senderRole === 'operator') {
+    db.prepare("INSERT INTO messages (conversation_id, sender_role, content) VALUES (?, ?, ?)")
+      .run(req.params.id, 'admin', 'message is received and admin will get back to you as soon as possible.');
+  }
   
   db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(req.params.id);
 
