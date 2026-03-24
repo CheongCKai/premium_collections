@@ -860,7 +860,7 @@ function PurchaseHistory() {
             <div key={order.id} className="order-card">
               <div className="order-header">
                 <div>
-                  <span className="order-id">Order #{order.id}</span>
+                  <span className="order-id">Order #{order.user_order_number || order.id}</span>
                   <span className="order-date">{new Date(order.created_at).toLocaleDateString()}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
@@ -1441,7 +1441,7 @@ function AdminOrdersPanel({ showToast }) {
         <tbody>
           {orders.map(order => (
             <tr key={order.id}>
-              <td>#{order.id}</td>
+              <td>#{order.user_order_number || order.id}</td>
               <td>
                 <div style={{ fontWeight: '600' }}>{order.username}</div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{order.email}</div>

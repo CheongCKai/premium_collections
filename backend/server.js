@@ -212,7 +212,10 @@ app.post("/api/orders", requireAuth, (req, res) => {
     return sum + (toy.price * ci.qty);
   }, 0);
 
-  const orderInfo = db.prepare("INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, 'ordered')").run(req.user.id, total);
+  const lastOrder = db.prepare("SELECT MAX(user_order_number) as last_no FROM orders WHERE user_id = ?").get(req.user.id);
+  const nextNo = (lastOrder?.last_no || 0) + 1;
+
+  const orderInfo = db.prepare("INSERT INTO orders (user_id, total_amount, status, user_order_number) VALUES (?, ?, 'ordered', ?)").run(req.user.id, total, nextNo);
   const orderId = orderInfo.lastInsertRowid;
   const insertItem = db.prepare("INSERT INTO order_items (order_id, toy_id, qty, price_at_purchase) VALUES (?, ?, ?, ?)");
   items.forEach(ci => {

@@ -125,6 +125,10 @@ try {
   db.prepare("ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0").run();
 } catch (e) {}
 
+try {
+  db.prepare("ALTER TABLE orders ADD COLUMN user_order_number INTEGER").run();
+} catch (e) {}
+
 // ── Seed Admin & Operator Accounts ──────────────────────────────────
 const seedAccounts = () => {
   // Admin
