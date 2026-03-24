@@ -620,6 +620,14 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
                 Users
               </button>
             )}
+            {(currentUser?.role === 'admin' || currentUser?.role === 'operator') && (
+              <button 
+                className={`pill${activeTab === 'orders' ? ' active' : ''}`} 
+                onClick={() => setActiveTab('orders')}
+              >
+                Purchase Orders
+              </button>
+            )}
           </div>
         </div>
 
@@ -719,8 +727,10 @@ function AdminPanel({ currentUser, toys, onToyUpdate, showToast }) {
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : activeTab === 'users' ? (
         <AdminUsersPanel showToast={showToast} />
+      ) : (
+        <AdminOrdersPanel showToast={showToast} />
       )}
     </div>
   );
@@ -853,7 +863,12 @@ function PurchaseHistory() {
                   <span className="order-id">Order #{order.id}</span>
                   <span className="order-date">{new Date(order.created_at).toLocaleDateString()}</span>
                 </div>
-                <span className="order-total">${order.total_amount.toFixed(2)}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                  <span className="order-total">${order.total_amount.toFixed(2)}</span>
+                  <span className={`status-badge ${order.status.replace(/\s+/g, '-')}`}>
+                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                  </span>
+                </div>
               </div>
               <div className="order-items">
                 {order.items.map(item => (
@@ -1357,6 +1372,103 @@ function AdminUsersPanel({ showToast }) {
                     </button>
                   )}
                 </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function AdminOrdersPanel({ showToast }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = () => {
+    const token = sessionStorage.getItem('token');
+    fetch('/api/admin/orders', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      setOrders(Array.isArray(data) ? data : []);
+      setLoading(false);
+    })
+    .catch(err => {
+      console.error(err);
+      setLoading(false);
+    });
+  };
+
+  const updateStatus = (orderId, newStatus) => {
+    const token = sessionStorage.getItem('token');
+    fetch(`/api/admin/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ status: newStatus })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      showToast(`Order #${orderId} updated to ${newStatus}`);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    })
+    .catch(err => showToast(err.message, 'error'));
+  };
+
+  if (loading) return <div>Loading orders...</div>;
+
+  return (
+    <div className="admin-grid">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Order ID</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map(order => (
+            <tr key={order.id}>
+              <td>#{order.id}</td>
+              <td>
+                <div style={{ fontWeight: '600' }}>{order.username}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{order.email}</div>
+              </td>
+              <td>
+                <div style={{ fontSize: '0.85rem' }}>
+                  {order.items.map(item => `${item.name} (x${item.qty})`).join(', ')}
+                </div>
+              </td>
+              <td style={{ fontWeight: '700' }}>${order.total_amount.toFixed(2)}</td>
+              <td>
+                <span className={`status-badge ${order.status.replace(/\s+/g, '-')}`}>
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                </span>
+              </td>
+              <td>
+                <select 
+                  className="stock-select"
+                  value={order.status}
+                  onChange={(e) => updateStatus(order.id, e.target.value)}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  <option value="ordered">Ordered</option>
+                  <option value="out for shipping">Out for Shipping</option>
+                  <option value="out for delivery">Out for Delivery</option>
+                  <option value="completed">Completed</option>
+                </select>
               </td>
             </tr>
           ))}

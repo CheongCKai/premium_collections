@@ -969,6 +969,31 @@
   border: 1px solid #e2e8f0;
 }
 
+/* ── Order Status Badges ── */
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-badge.ordered {
+  background: #fee2e2;
+  color: #ef4444; /* Red */
+}
+
+.status-badge.out-for-shipping, 
+.status-badge.out-for-delivery {
+  background: #ffedd5;
+  color: #f97316; /* Orange */
+}
+
+.status-badge.completed {
+  background: #dcfce7;
+  color: #22c55e; /* Green */
+}
+
 /* ── Admin Inbox Redesign ── */
 .inbox-container {
   display: grid;

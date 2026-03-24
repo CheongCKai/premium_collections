@@ -212,7 +212,7 @@ app.post("/api/orders", requireAuth, (req, res) => {
     return sum + (toy.price * ci.qty);
   }, 0);
 
-  const orderInfo = db.prepare("INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, 'completed')").run(req.user.id, total);
+  const orderInfo = db.prepare("INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, 'ordered')").run(req.user.id, total);
   const orderId = orderInfo.lastInsertRowid;
   const insertItem = db.prepare("INSERT INTO order_items (order_id, toy_id, qty, price_at_purchase) VALUES (?, ?, ?, ?)");
   items.forEach(ci => {
@@ -450,6 +450,34 @@ app.post("/api/admin/users/:id/:action", requireOperatorOnly, (req, res) => {
   const is_disabled = action === 'disable' ? 1 : 0;
   db.prepare("UPDATE users SET is_disabled = ? WHERE id = ?").run(is_disabled, id);
   res.json({ message: `Account successfully ${action}d.` });
+});
+
+// Admin/Operator: List all purchase orders
+app.get("/api/admin/orders", requireOperator, (req, res) => {
+  const orders = db.prepare(`
+    SELECT o.*, u.username, u.email 
+    FROM orders o 
+    JOIN users u ON u.id = o.user_id 
+    ORDER BY o.created_at DESC
+  `).all();
+  
+  const detailed = orders.map(o => {
+    const its = db.prepare("SELECT oi.*, t.name, t.price FROM order_items oi JOIN toys t ON t.id = oi.toy_id WHERE oi.order_id = ?").all(o.id);
+    return { ...o, items: its };
+  });
+  res.json(detailed);
+});
+
+// Admin/Operator: Update order status
+app.patch("/api/admin/orders/:id/status", requireOperator, (req, res) => {
+  const { status } = req.body;
+  const validStatuses = ['ordered', 'out for shipping', 'out for delivery', 'completed'];
+  if (!status || !validStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  
+  db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, req.params.id);
+  res.json({ success: true, status });
 });
 
 // ── Start Server ─────────────────────────────────────────────────────
